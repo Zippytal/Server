@@ -1,3 +1,3 @@
 ## Backend of zippytal
 
-this repository expose the key manager and the zippytal server.
+this repository exposes the key manager and the zippytal server.
