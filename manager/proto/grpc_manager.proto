@@ -89,6 +89,7 @@ message Peer {
     bool active = 4;
     repeated string knownSquadsId = 5;
     repeated string friends = 6;
+    repeated string friendRequests = 7;
 }
 
 message PeerListResponse {

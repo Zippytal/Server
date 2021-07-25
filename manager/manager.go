@@ -18,13 +18,17 @@ type (
 	SquadEvent    string
 
 	GRPCPeer struct {
-		Conn  GrpcManager_LinkServer
-		State GRPCPeerState
+		Conn        GrpcManager_LinkServer
+		State       GRPCPeerState
+		DisplayName string
+		DbPeer      *Peer
 	}
 
 	WSPeer struct {
-		Conn  *websocket.Conn
-		State WSState
+		Conn        *websocket.Conn
+		DisplayName string
+		DbPeer      *Peer
+		State       WSState
 	}
 
 	Manager struct {
@@ -91,11 +95,78 @@ func NewManager() (manager *Manager, err error) {
 	return
 }
 
+func (manager *Manager) RemovePeerFriendRequest(peerId string, friendId string) (err error) {
+	peer, err := manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	if err != nil {
+		return
+	}
+	var index = 0
+	for i, v := range peer.FriendRequests {
+		if v == friendId {
+			index = i
+		}
+	}
+	err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests[:index], peer.FriendRequests[index+1:]...))
+	return
+}
+
+func (manager *Manager) AddPeerFriendRequest(peerId string, friendId string) (err error) {
+	peer, err := manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	if err != nil {
+		return
+	}
+	for _, v := range peer.FriendRequests {
+		if v == friendId {
+			err = fmt.Errorf("request already sent")
+			return
+		}
+	}
+	err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests, friendId))
+	return
+}
+
+func (manager *Manager) GetPeer(peerId string) (peer *Peer, err error) {
+	peer, err = manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	return
+}
+
+func (manager *Manager) RemovePeerFriend(peerId string, friendId string) (err error) {
+	peer, err := manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	if err != nil {
+		return
+	}
+	var index = 0
+	for i, v := range peer.FriendRequests {
+		if v == friendId {
+			index = i
+		}
+	}
+	err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests[:index], peer.FriendRequests[index+1:]...))
+	return
+}
+
+func (manager *Manager) UpdatePeerFriends(peerId string, friendId string) (err error) {
+	peer, err := manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	if err != nil {
+		return
+	}
+	err = manager.RemovePeerFriendRequest(peerId,friendId)
+	if err != nil {
+		return
+	}
+	err = manager.PeerDBManager.UpdatePeerFriends(context.Background(), peerId, append(peer.Friends, friendId))
+	return
+}
+
 func (manager *Manager) CreatePeer(peerId string, peerKey string, peerUsername string) (err error) {
 	peer := &Peer{
-		PubKey: peerKey,
-		Id:     peerId,
-		Name:   peerUsername,
+		PubKey:         peerKey,
+		Id:             peerId,
+		Name:           peerUsername,
+		Friends:        []string{},
+		KnownSquadsId:  []string{},
+		FriendRequests: []string{},
+		Active:         true,
 	}
 	err = manager.PeerDBManager.AddNewPeer(context.Background(), peer)
 	return
@@ -130,6 +201,17 @@ func (manager *Manager) PeerAuthVerif(peerId string, token []byte) (err error) {
 	}
 	fmt.Println("done")
 	delete(manager.AuthManager.AuthTokenPending, peerId)
+	return
+}
+
+func (manager *Manager) Authenticate(peerId string, token string) (err error) {
+	if _, ok := manager.AuthManager.AuthTokenValid[token]; !ok {
+		err = fmt.Errorf("authentification failed token invalid")
+		return
+	}
+	if manager.AuthManager.AuthTokenValid[token] != peerId {
+		err = fmt.Errorf("authentification failed token associated with wrong id")
+	}
 	return
 }
 
@@ -183,11 +265,11 @@ func (manager *Manager) CreateSquad(token string, id string, owner string, name 
 }
 
 func (manager *Manager) DeleteSquad(token string, id string, from string) (err error) {
-	if _, ok := manager.Squads[id]; !ok {
-		err = fmt.Errorf("this squad does not exist")
+	squad,err := manager.SquadDBManager.GetSquad(context.Background(),id)
+	if err != nil {
 		return
 	}
-	switch manager.Squads[id].NetworkType {
+	switch squad.NetworkType {
 	case MESH:
 		err = manager.SquadDBManager.DeleteSquad(context.Background(), id)
 	case HOSTED:
@@ -198,11 +280,8 @@ func (manager *Manager) DeleteSquad(token string, id string, from string) (err e
 }
 
 func (manager *Manager) ModifySquad(token string, id string, from string, name string, squadType SquadType, password string) (err error) {
-	if _, ok := manager.Squads[id]; !ok {
-		err = fmt.Errorf("this squad does not exist")
-		return
-	}
-	if manager.Squads[id].Owner != from {
+	squad,err := manager.SquadDBManager.GetSquad(context.Background(),id)
+	if squad.Owner != from {
 		err = fmt.Errorf("you are not the owner of this squad so you can't modifiy it")
 		return
 	}
@@ -444,7 +523,6 @@ func (manager *Manager) ListSquadsByID(lastIndex int64, squadId string, networkT
 }
 
 func (manager *Manager) ListAllPeers(lastIndex int64) (peers []*Peer, err error) {
-
 	peers, err = manager.PeerDBManager.GetPeers(context.Background(), 100, lastIndex)
 	return
 }
@@ -478,6 +556,23 @@ func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedM
 		}
 	}
 	err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers))
+	return
+}
+
+func (manager *Manager) DeleteSquadAuthorizedMembers(squadId string, authorizedMembers string) (err error) {
+	var squad *Squad
+	if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+		return
+	}
+	var index int
+	for i, v := range squad.AuthorizedMembers {
+		if v == authorizedMembers {
+			index = i
+		}
+	}
+	squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1], squad.AuthorizedMembers[index] = squad.AuthorizedMembers[index], squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1]
+
+	err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
 	return
 }
 

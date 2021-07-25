@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -27,10 +28,20 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 	switch req.Type {
 	case WS_INIT:
 		manager.Lock()
-		conn.SetCloseHandler(func(code int, text string) error {
-			delete(manager.WSPeers, req.From)
-			return nil
-		})
+		if id, ok := manager.AuthManager.AuthTokenValid[req.Token]; ok {
+			if id == req.From {
+				if p, err := manager.PeerDBManager.GetPeer(context.Background(), req.From); err == nil {
+					manager.WSPeers[req.From] = &WSPeer{
+						State:       WS_OPEN,
+						DbPeer:      p,
+						Conn:        conn,
+						DisplayName: p.Name,
+					}
+					manager.Unlock()
+					return err
+				}
+			}
+		}
 		manager.WSPeers[req.From] = &WSPeer{
 			State: WS_OPEN,
 			Conn:  conn,
