@@ -9,6 +9,7 @@ const (
 	CREATE_NODE = "create_node"
 	GET_NODE    = "get_node"
 	DELETE_NODE = "delete_node"
+	SET_NODE_ACTIVE
 )
 
 type NodeHTTPMiddleware struct{}
