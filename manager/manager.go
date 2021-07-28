@@ -40,6 +40,7 @@ type (
 		HostedSquadDBManager *HostedSquadDBManager
 		PeerDBManager        *PeerDBManager
 		AuthManager          *AuthManager
+		NodeDBManager        *NodeDBManager
 		*sync.RWMutex
 	}
 )
@@ -81,6 +82,10 @@ func NewManager() (manager *Manager, err error) {
 	if err != nil {
 		return
 	}
+	nodeDBManager, err := NewNodeDBManager("localhost", 27017)
+	if err != nil {
+		return
+	}
 	manager = &Manager{
 		State:                ON,
 		GRPCPeers:            make(map[string]*GRPCPeer),
@@ -89,6 +94,7 @@ func NewManager() (manager *Manager, err error) {
 		SquadDBManager:       squadDBManager,
 		HostedSquadDBManager: hostedSquadDBManager,
 		PeerDBManager:        peerDBManager,
+		NodeDBManager:        nodeDBManager,
 		RWMutex:              &sync.RWMutex{},
 		AuthManager:          NewAuthManager(),
 	}
@@ -106,7 +112,9 @@ func (manager *Manager) RemovePeerFriendRequest(peerId string, friendId string) 
 			index = i
 		}
 	}
-	err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests[:index], peer.FriendRequests[index+1:]...))
+	if len(peer.FriendRequests) > 0 {
+		err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests[:index], peer.FriendRequests[index+1:]...))
+	}
 	return
 }
 
@@ -150,7 +158,7 @@ func (manager *Manager) UpdatePeerFriends(peerId string, friendId string) (err e
 	if err != nil {
 		return
 	}
-	err = manager.RemovePeerFriendRequest(peerId,friendId)
+	err = manager.RemovePeerFriendRequest(peerId, friendId)
 	if err != nil {
 		return
 	}
@@ -169,6 +177,20 @@ func (manager *Manager) CreatePeer(peerId string, peerKey string, peerUsername s
 		Active:         true,
 	}
 	err = manager.PeerDBManager.AddNewPeer(context.Background(), peer)
+	return
+}
+
+func (manager *Manager) CreateNode(nodeId string, nodeKey string, nodeUsername string) (err error) {
+	node := &Node{
+		PubKey:         nodeKey,
+		Id:             nodeId,
+		Name:           nodeUsername,
+		Friends:        []string{},
+		KnownSquadsId:  []string{},
+		FriendRequests: []string{},
+		Active:         true,
+	}
+	err = manager.NodeDBManager.AddNewNode(context.Background(), node)
 	return
 }
 
@@ -215,7 +237,7 @@ func (manager *Manager) Authenticate(peerId string, token string) (err error) {
 	return
 }
 
-func (manager *Manager) GetSquadSByOwner(token string, owner string, lastIndex int64) (squad []*Squad, err error) {
+func (manager *Manager) GetSquadSByOwner(token string, owner string, lastIndex int64, networkType SquadNetworkType) (squads []*Squad, err error) {
 	if _, ok := manager.AuthManager.AuthTokenValid[token]; !ok {
 		err = fmt.Errorf("not a valid token provided")
 		return
@@ -224,8 +246,19 @@ func (manager *Manager) GetSquadSByOwner(token string, owner string, lastIndex i
 		err = fmt.Errorf("invalid access")
 		return
 	}
-	squad, err = manager.SquadDBManager.GetSquadsByOwner(context.Background(), owner, 100, lastIndex)
-	return
+	fmt.Println("Net Type", networkType)
+	switch networkType {
+	case MESH:
+		squads, err = manager.SquadDBManager.GetSquadsByOwner(context.Background(), owner, 100, lastIndex)
+		fmt.Println("squads: ", squads)
+		return
+	case HOSTED:
+		squads, err = manager.HostedSquadDBManager.GetHostedSquadsByOwner(context.Background(), owner, 100, lastIndex)
+		fmt.Println("squads: ", squads)
+		return
+	default:
+		return
+	}
 }
 
 func (manager *Manager) CreateSquad(token string, id string, owner string, name string, squadType SquadType, password string, squadNetworkType SquadNetworkType, host string) (err error) {
@@ -265,7 +298,7 @@ func (manager *Manager) CreateSquad(token string, id string, owner string, name 
 }
 
 func (manager *Manager) DeleteSquad(token string, id string, from string) (err error) {
-	squad,err := manager.SquadDBManager.GetSquad(context.Background(),id)
+	squad, err := manager.SquadDBManager.GetSquad(context.Background(), id)
 	if err != nil {
 		return
 	}
@@ -280,7 +313,7 @@ func (manager *Manager) DeleteSquad(token string, id string, from string) (err e
 }
 
 func (manager *Manager) ModifySquad(token string, id string, from string, name string, squadType SquadType, password string) (err error) {
-	squad,err := manager.SquadDBManager.GetSquad(context.Background(),id)
+	squad, err := manager.SquadDBManager.GetSquad(context.Background(), id)
 	if squad.Owner != from {
 		err = fmt.Errorf("you are not the owner of this squad so you can't modifiy it")
 		return
@@ -539,15 +572,27 @@ func (manager *Manager) ListPeersByName(lastIndex int64, name string) (peers []*
 	return
 }
 
-func (manager *Manager) UpdateSquadName(squadId string, squadName string) (err error) {
-	err = manager.SquadDBManager.UpdateSquadName(context.Background(), squadId, squadName)
+func (manager *Manager) UpdateSquadName(squadId string, squadName string, networkType SquadNetworkType) (err error) {
+	switch networkType {
+	case MESH:
+		err = manager.SquadDBManager.UpdateSquadName(context.Background(), squadId, squadName)
+	case HOSTED:
+		err = manager.HostedSquadDBManager.UpdateHostedSquadName(context.Background(), squadId, squadName)
+	}
 	return
 }
 
-func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedMembers string) (err error) {
+func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedMembers string, networkType SquadNetworkType) (err error) {
 	var squad *Squad
-	if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
-		return
+	switch networkType {
+	case MESH:
+		if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+			return
+		}
+	case HOSTED:
+		if squad, err = manager.HostedSquadDBManager.GetHostedSquad(context.Background(), squadId); err != nil {
+			return
+		}
 	}
 	for _, v := range squad.AuthorizedMembers {
 		if v == authorizedMembers {
@@ -555,14 +600,26 @@ func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedM
 			return
 		}
 	}
-	err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers))
+	switch networkType {
+	case MESH:
+		err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers))
+	case HOSTED:
+		err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers))
+	}
 	return
 }
 
-func (manager *Manager) DeleteSquadAuthorizedMembers(squadId string, authorizedMembers string) (err error) {
+func (manager *Manager) DeleteSquadAuthorizedMembers(squadId string, authorizedMembers string, networkType SquadNetworkType) (err error) {
 	var squad *Squad
-	if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
-		return
+	switch networkType {
+	case MESH:
+		if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+			return
+		}
+	case HOSTED:
+		if squad, err = manager.HostedSquadDBManager.GetHostedSquad(context.Background(), squadId); err != nil {
+			return
+		}
 	}
 	var index int
 	for i, v := range squad.AuthorizedMembers {
@@ -571,7 +628,12 @@ func (manager *Manager) DeleteSquadAuthorizedMembers(squadId string, authorizedM
 		}
 	}
 	squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1], squad.AuthorizedMembers[index] = squad.AuthorizedMembers[index], squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1]
-
+	switch networkType {
+	case MESH:
+		err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
+	case HOSTED:
+		err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
+	}
 	err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
 	return
 }

@@ -6,6 +6,9 @@ import (
 )
 
 func main() {
+	http.HandleFunc("dev.zippytal.com/", func(rw http.ResponseWriter, r *http.Request) {
+		http.Redirect(rw,r,"https://dev.zippytal.com/",http.StatusPermanentRedirect)
+	})
 	http.HandleFunc("app.zippytal.com/", func(rw http.ResponseWriter, r *http.Request) {
 		http.Redirect(rw,r,"https://app.zippytal.com/",http.StatusPermanentRedirect)
 	})

@@ -92,6 +92,17 @@ message Peer {
     repeated string friendRequests = 7;
 }
 
+message Node {
+    string id = 1;
+    string name = 2;
+    string pubKey = 3;
+    bool active = 4;
+    repeated string knownSquadsId = 5;
+    repeated string friends = 6;
+    repeated string friendRequests = 7;
+    string nodeType = 8;
+}
+
 message PeerListResponse {
     bool success = 1;
     int32 lastIndex = 2;

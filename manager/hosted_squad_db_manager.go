@@ -122,3 +122,10 @@ func (pdm *HostedSquadDBManager) UpdateHostedSquadMembers(ctx context.Context, s
 	})
 	return
 }
+
+func (pdm *HostedSquadDBManager) UpdateHostedSquadAuthorizedMembers(ctx context.Context, squadId string, authorizedMembers []string) (err error) {
+	_, err = pdm.UpdateOne(ctx, bson.M{"id": squadId}, bson.D{
+		{"$set", bson.D{{"authorizedMembers", authorizedMembers}}},
+	})
+	return
+}
