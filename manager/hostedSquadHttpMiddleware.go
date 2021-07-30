@@ -12,6 +12,7 @@ const (
 	LIST_HOSTED_SQUADS_BY_NAME             = "list_hosted_squads_by_name"
 	LIST_HOSTED_SQUADS_BY_ID               = "list_hosted_squads_by_id"
 	GET_HOSTED_SQUADS_BY_OWNER             = "get_hosted_squads_by_owner"
+	LIST_HOSTED_SQUADS_BY_HOST             = "list_hosted_squads_by_host"
 	HOSTED_SQUAD_ACCESS_DENIED             = "squad_access_denied"
 	HOSTED_SQUAD_ACCESS_GRANTED            = "squad_access_granted"
 	LEAVE_HOSTED_SQUAD                     = "leave_hosted_squad"
@@ -93,6 +94,22 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			return err
 		}
 		err = json.NewEncoder(w).Encode(squads)
+	case LIST_HOSTED_SQUADS_BY_HOST:
+		if err = VerifyFields(r.Payload, "host", "lastIndex"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		lastIndex, err := strconv.Atoi(r.Payload["lastIndex"])
+		if err != nil {
+			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
+			return err
+		}
+		squads, err := m.ListSquadsByHost(int64(lastIndex), r.Payload["host"], HOSTED)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return err
+		}
+		err = json.NewEncoder(w).Encode(squads)
 	case LIST_HOSTED_SQUADS_BY_ID:
 		if err = VerifyFields(r.Payload, "squadId", "networkType", "lastIndex"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -146,7 +163,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.DeleteSquad(r.Token, r.Payload["squadId"], r.From); err != nil {
+		if err = m.DeleteSquad(r.Token, r.Payload["squadId"], r.From,HOSTED); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

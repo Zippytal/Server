@@ -89,7 +89,7 @@ func (pdm *HostedSquadDBManager) GetHostedSquadsByOwner(ctx context.Context, own
 }
 
 func (pdm *HostedSquadDBManager) GetHostedSquadsByHost(ctx context.Context, host string, limit int64, lastIndex int64) (squads []*Squad, err error) {
-	res, err := pdm.Find(ctx, bson.M{"host": host}, options.Find().SetLimit(limit).SetSkip(lastIndex))
+	res, err := pdm.Find(ctx, bson.M{"hostid": host}, options.Find().SetLimit(limit).SetSkip(lastIndex))
 	if err != nil {
 		return
 	}

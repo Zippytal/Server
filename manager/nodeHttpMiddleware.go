@@ -2,6 +2,7 @@ package manager
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -15,13 +16,16 @@ const (
 type NodeHTTPMiddleware struct{}
 
 func (shm *NodeHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http.ResponseWriter, m *Manager) (err error) {
+	fmt.Println("node middleware called")
+	fmt.Println(r.From,r.Type)
 	switch r.Type {
 	case CREATE_NODE:
-		if err = VerifyFields(r.Payload, "token", "peerId"); err != nil {
+		fmt.Println("create node called")
+		if err = VerifyFields(r.Payload, "nodeId", "nodeKey","nodeUsername"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.Authenticate(r.Payload["peerId"], r.Payload["token"]); err != nil {
+		if err = m.CreateNode(r.Payload["nodeId"], r.Payload["nodeKey"], r.Payload["nodeUsername"]); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

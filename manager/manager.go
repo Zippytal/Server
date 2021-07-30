@@ -55,6 +55,7 @@ const (
 	HOSTED_INCOMING_MEMBER SquadEvent = "hosted_incoming_member"
 	LEAVING_MEMBER         SquadEvent = "leaving_member"
 	HOSTED_LEAVING_MEMBER  SquadEvent = "hosted_leaving_member"
+	NEW_HOSTED_SQUAD                  = "new_hosted_squad"
 )
 
 const (
@@ -294,15 +295,20 @@ func (manager *Manager) CreateSquad(token string, id string, owner string, name 
 	if err != nil {
 		return
 	}
+	if _, ok := manager.GRPCPeers[host]; ok {
+		_ = manager.GRPCPeers[host].Conn.Send(&Response{
+			Type:    NEW_HOSTED_SQUAD,
+			Success: true,
+			Payload: map[string]string{
+				"ID": id,
+			},
+		})
+	}
 	return
 }
 
-func (manager *Manager) DeleteSquad(token string, id string, from string) (err error) {
-	squad, err := manager.SquadDBManager.GetSquad(context.Background(), id)
-	if err != nil {
-		return
-	}
-	switch squad.NetworkType {
+func (manager *Manager) DeleteSquad(token string, id string, from string,networkType SquadNetworkType) (err error) {
+	switch networkType {
 	case MESH:
 		err = manager.SquadDBManager.DeleteSquad(context.Background(), id)
 	case HOSTED:
@@ -541,6 +547,14 @@ func (manager *Manager) ListSquadsByName(lastIndex int64, squadName string, netw
 		squads, err = manager.SquadDBManager.GetSquadsByName(context.Background(), squadName, 100, lastIndex)
 	case HOSTED:
 		squads, err = manager.HostedSquadDBManager.GetHostedSquadsByName(context.Background(), squadName, 100, lastIndex)
+	}
+	return
+}
+
+func (manager *Manager) ListSquadsByHost(lastIndex int64, host string, networkType SquadNetworkType) (squads []*Squad, err error) {
+	switch networkType {
+	case HOSTED:
+		squads, err = manager.HostedSquadDBManager.GetHostedSquadsByHost(context.Background(), host, 100, lastIndex)
 	}
 	return
 }

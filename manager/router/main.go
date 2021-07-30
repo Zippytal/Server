@@ -22,7 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	h := manager.NewWSHandler(m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{&manager.SquadHTTPMiddleware{}, &manager.AuthHTTPMiddleware{}, &manager.HostedSquadHTTPMiddleware{}, &manager.PeerHTTPMiddleware{}})
+	h := manager.NewWSHandler(m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{&manager.SquadHTTPMiddleware{}, &manager.AuthHTTPMiddleware{}, &manager.HostedSquadHTTPMiddleware{}, &manager.PeerHTTPMiddleware{},&manager.NodeHTTPMiddleware{}})
 	serv := manager.NewWSServ(":9999", h)
 	fmt.Println("server launch")
 	certFile := "/etc/letsencrypt/live/app.zippytal.com/fullchain.pem"
