@@ -1,6 +1,5 @@
 #[allow(dead_code)]
 mod encryption;
-mod key_generation;
 
 #[cfg(test)]
 mod tests {
@@ -81,7 +80,7 @@ Qy0c9gSQGRZThWdsEPhF97o6Dal/TrY9ezG0bsoABFhzsMuKl9V2rcsYfwL9X6Q0
         };
         let msg = "this is my message: get fucked";
         if let Some(_) = manager.encrypt(&msg.as_bytes()) {
-           println!("success");
+            println!("success");
         } else {
             panic!("encryption failed")
         }

@@ -10,4 +10,4 @@
   - Implement key exchange and password free auth
   - Use key authentification and handle basic authorizations
   - Add real squad ownership and manage squad authorizations
-  
+   
