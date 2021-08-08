@@ -307,7 +307,7 @@ func (manager *Manager) CreateSquad(token string, id string, owner string, name 
 	return
 }
 
-func (manager *Manager) DeleteSquad(token string, id string, from string,networkType SquadNetworkType) (err error) {
+func (manager *Manager) DeleteSquad(token string, id string, from string, networkType SquadNetworkType) (err error) {
 	switch networkType {
 	case MESH:
 		err = manager.SquadDBManager.DeleteSquad(context.Background(), id)
@@ -495,32 +495,68 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 		LEAVING = string(HOSTED_LEAVING_MEMBER)
 	}
 	defer manager.RUnlock()
-	for _, member := range squad.Members {
-		if member != from {
-			if _, ok := manager.GRPCPeers[member]; ok {
-				if err := manager.GRPCPeers[member].Conn.Send(&Response{
-					Type:    LEAVING,
-					Success: true,
-					Payload: map[string]string{
-						"id": from,
-					},
-				}); err != nil {
-					delete(manager.GRPCPeers, member)
-					return err
-				}
-			} else if _, ok := manager.WSPeers[member]; ok {
-				if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
-					"from":    from,
-					"to":      member,
-					"type":    LEAVING,
-					"payload": map[string]string{},
-				}); err != nil {
-					log.Println(err)
-					return
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for _, member := range squad.Members {
+			if member != from {
+				if _, ok := manager.GRPCPeers[member]; ok {
+					if err := manager.GRPCPeers[member].Conn.Send(&Response{
+						Type:    LEAVING,
+						Success: true,
+						Payload: map[string]string{
+							"id":      from,
+							"squadId": id,
+						},
+					}); err != nil {
+						delete(manager.GRPCPeers, member)
+						return
+					}
+				} else if _, ok := manager.WSPeers[member]; ok {
+					if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
+						"from":    from,
+						"to":      member,
+						"type":    LEAVING,
+						"payload": map[string]string{},
+					}); err != nil {
+						log.Println(err)
+						return
+					}
 				}
 			}
 		}
-	}
+	}()
+	go func() {
+		defer wg.Done()
+		for _, member := range squad.AuthorizedMembers {
+			if member != from {
+				if _, ok := manager.GRPCPeers[member]; ok {
+					if err := manager.GRPCPeers[member].Conn.Send(&Response{
+						Type:    LEAVING,
+						Success: true,
+						Payload: map[string]string{
+							"id":      from,
+							"squadId": id,
+						},
+					}); err != nil {
+						delete(manager.GRPCPeers, member)
+						return
+					}
+				} else if _, ok := manager.WSPeers[member]; ok {
+					if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
+						"from":    from,
+						"to":      member,
+						"type":    LEAVING,
+						"payload": map[string]string{},
+					}); err != nil {
+						log.Println(err)
+						return
+					}
+				}
+			}
+		}
+	}()
 	fmt.Println(squad.Members)
 	switch networkType {
 	case MESH:
@@ -528,6 +564,7 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 	case HOSTED:
 		err = manager.HostedSquadDBManager.UpdateHostedSquadMembers(context.Background(), squad.ID, squad.Members)
 	}
+	wg.Wait()
 	return
 }
 
@@ -597,30 +634,72 @@ func (manager *Manager) UpdateSquadName(squadId string, squadName string, networ
 }
 
 func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedMembers string, networkType SquadNetworkType) (err error) {
-	var squad *Squad
-	switch networkType {
-	case MESH:
-		if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+	wg, errCh, done := &sync.WaitGroup{}, make(chan error), make(chan struct{})
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		var squad *Squad
+		switch networkType {
+		case MESH:
+			if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+				errCh <- err
+				return
+			}
+		case HOSTED:
+			if squad, err = manager.HostedSquadDBManager.GetHostedSquad(context.Background(), squadId); err != nil {
+				errCh <- err
+				return
+			}
+		}
+		for _, v := range squad.AuthorizedMembers {
+			if v == authorizedMembers {
+				err = fmt.Errorf("user already authorized")
+				errCh <- err
+				return
+			}
+		}
+		switch networkType {
+		case MESH:
+			if err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers)); err != nil {
+				errCh <- err
+				return
+			}
+		case HOSTED:
+			if err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers)); err != nil {
+				errCh <- err
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		var peer *Peer
+		if peer, err = manager.PeerDBManager.GetPeer(context.Background(), authorizedMembers); err != nil {
+			errCh <- err
 			return
 		}
-	case HOSTED:
-		if squad, err = manager.HostedSquadDBManager.GetHostedSquad(context.Background(), squadId); err != nil {
+		for _, v := range peer.KnownSquadsId {
+			if v == squadId {
+				err = fmt.Errorf("squad already known")
+				errCh <- err
+				return
+			}
+		}
+		if err = manager.PeerDBManager.UpdateKnownSquads(context.Background(),authorizedMembers,append(peer.KnownSquadsId,squadId)); err != nil {
+			errCh <- err
 			return
 		}
+	}()
+	go func() {
+		wg.Wait()
+		done <- struct{}{}
+	}()
+	select {
+	case err = <-errCh:
+		return
+	case <-done:
+		return
 	}
-	for _, v := range squad.AuthorizedMembers {
-		if v == authorizedMembers {
-			err = fmt.Errorf("user already authorized")
-			return
-		}
-	}
-	switch networkType {
-	case MESH:
-		err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers))
-	case HOSTED:
-		err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers))
-	}
-	return
 }
 
 func (manager *Manager) DeleteSquadAuthorizedMembers(squadId string, authorizedMembers string, networkType SquadNetworkType) (err error) {

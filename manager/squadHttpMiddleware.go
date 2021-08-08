@@ -146,7 +146,7 @@ func (shm *SquadHTTPMiddleware) Process(r *ServRequest, req *http.Request, w htt
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.DeleteSquad(r.Token, r.Payload["squadId"], r.From,MESH); err != nil {
+		if err = m.DeleteSquad(r.Token, r.Payload["squadId"], r.From, MESH); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

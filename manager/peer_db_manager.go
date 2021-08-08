@@ -97,9 +97,15 @@ func (pdm *PeerDBManager) UpdatePeerStatus(ctx context.Context, peerId string, n
 }
 
 func (pdm *PeerDBManager) UpdatePeerFriends(ctx context.Context, peerId string, friends []string) (err error) {
-
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
 		{"$set", bson.D{{"friends", friends}}},
+	})
+	return
+}
+
+func (pdm *PeerDBManager) UpdateKnownSquads(ctx context.Context, peerId string, knownSquads []string) (err error) {
+	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
+		{"$set", bson.D{{"knownSquadsId", knownSquads}}},
 	})
 	return
 }

@@ -169,7 +169,7 @@ func (service *GRPCManagerService) UpdateSquad(ctx context.Context, req *SquadUp
 func (service *GRPCManagerService) DeleteSquad(ctx context.Context, req *SquadDeleteRequest) (res *SquadDeleteResponse, err error) {
 	done, errch := make(chan *SquadDeleteResponse), make(chan error)
 	go func() {
-		if err := service.Manager.DeleteSquad(req.Token, req.SquadId, req.UserId,MESH); err != nil {
+		if err := service.Manager.DeleteSquad(req.Token, req.SquadId, req.UserId, MESH); err != nil {
 			errch <- err
 			return
 		}
