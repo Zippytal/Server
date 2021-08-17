@@ -11,6 +11,7 @@ const (
 	LIST_SQUADS                     = "list_squads"
 	LIST_SQUADS_BY_NAME             = "list_squads_by_name"
 	LIST_SQUADS_BY_ID               = "list_squads_by_id"
+	GET_SQUAD_BY_ID                 = "get_squad_by_id"
 	GET_SQUADS_BY_OWNER             = "get_squads_by_owner"
 	SQUAD_ACCESS_DENIED             = "squad_access_denied"
 	SQUAD_ACCESS_GRANTED            = "squad_access_granted"
@@ -109,6 +110,17 @@ func (shm *SquadHTTPMiddleware) Process(r *ServRequest, req *http.Request, w htt
 			return err
 		}
 		err = json.NewEncoder(w).Encode(squads)
+	case GET_SQUAD_BY_ID:
+		if err = VerifyFields(r.Payload, "squadId"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		squad, err := m.GetSquadByID(r.Payload["squadId"], MESH)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return err
+		}
+		err = json.NewEncoder(w).Encode(squad)
 	case LEAVE_SQUAD:
 		if err = VerifyFields(r.Payload, "squadNetworkType", "squadId"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

@@ -79,6 +79,11 @@ func (pdm *HostedSquadDBManager) GetHostedSquadsByID(ctx context.Context, patter
 	return
 }
 
+func (pdm *HostedSquadDBManager) GetHostedSquadByID(ctx context.Context, id string) (squad *Squad, err error) {
+	err = pdm.FindOne(ctx, bson.M{"id": id}).Decode(&squad)
+	return
+}
+
 func (pdm *HostedSquadDBManager) GetHostedSquadsByOwner(ctx context.Context, owner string, limit int64, lastIndex int64) (squads []*Squad, err error) {
 	res, err := pdm.Find(ctx, bson.M{"owner": owner}, options.Find().SetLimit(limit).SetSkip(lastIndex))
 	if err != nil {

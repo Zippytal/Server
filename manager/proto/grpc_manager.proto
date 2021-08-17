@@ -88,6 +88,7 @@ message Peer {
     string pubKey = 3;
     bool active = 4;
     repeated string knownSquadsId = 5;
+    repeated string knownHostedSquadsId = 8;
     repeated string friends = 6;
     repeated string friendRequests = 7;
 }
@@ -97,7 +98,7 @@ message Node {
     string name = 2;
     string pubKey = 3;
     bool active = 4;
-    repeated string knownSquadsId = 5;
+    repeated string knownPeersId = 5;
     repeated string friends = 6;
     repeated string friendRequests = 7;
     string nodeType = 8;

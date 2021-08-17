@@ -36,6 +36,7 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 						DbPeer:      p,
 						Conn:        conn,
 						DisplayName: p.Name,
+						mux:         &sync.Mutex{},
 					}
 					manager.Unlock()
 					return err
@@ -45,6 +46,7 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 		manager.WSPeers[req.From] = &WSPeer{
 			State: WS_OPEN,
 			Conn:  conn,
+			mux:   &sync.Mutex{},
 		}
 		manager.Unlock()
 		return

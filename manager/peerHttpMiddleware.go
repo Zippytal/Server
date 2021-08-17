@@ -9,6 +9,7 @@ import (
 
 const (
 	GET_PEER                    = "get_peer"
+	GET_CONNECTED_PEER          = "get_connected_peer"
 	LIST_PEERS                  = "list_peers"
 	LIST_ALL_PEERS              = "list_all_peers"
 	LIST_PEERS_BY_NAME          = "list_peers_by_name"
@@ -94,6 +95,17 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			return
 		}
 		peer, peerErr := m.GetPeer(r.Payload["peerId"])
+		if err != nil {
+			return peerErr
+		}
+		err = json.NewEncoder(w).Encode(peer)
+		return
+	case GET_CONNECTED_PEER:
+		if err = VerifyFields(r.Payload, "peerId"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		peer, peerErr := m.GetConnectedPeer(r.Payload["peerId"])
 		if err != nil {
 			return peerErr
 		}

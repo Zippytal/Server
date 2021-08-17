@@ -11,6 +11,7 @@ const (
 	LIST_HOSTED_SQUADS                     = "list_hosted_squads"
 	LIST_HOSTED_SQUADS_BY_NAME             = "list_hosted_squads_by_name"
 	LIST_HOSTED_SQUADS_BY_ID               = "list_hosted_squads_by_id"
+	GET_HOSTED_SQUAD_BY_ID                 = "get_hosted_squad_by_id"
 	GET_HOSTED_SQUADS_BY_OWNER             = "get_hosted_squads_by_owner"
 	LIST_HOSTED_SQUADS_BY_HOST             = "list_hosted_squads_by_host"
 	HOSTED_SQUAD_ACCESS_DENIED             = "squad_access_denied"
@@ -126,6 +127,17 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			return err
 		}
 		err = json.NewEncoder(w).Encode(squads)
+	case GET_HOSTED_SQUAD_BY_ID:
+		if err = VerifyFields(r.Payload, "squadId"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		squad, err := m.GetSquadByID(r.Payload["squadId"], HOSTED)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return err
+		}
+		err = json.NewEncoder(w).Encode(squad)
 	case LEAVE_HOSTED_SQUAD:
 		if err = VerifyFields(r.Payload, "squadId", "squadNetworkType"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

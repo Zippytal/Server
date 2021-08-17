@@ -70,6 +70,11 @@ func (pdm *SquadDBManager) GetSquadsByName(ctx context.Context, pattern string, 
 	return
 }
 
+func (pdm *SquadDBManager) GetSquadByID(ctx context.Context, id string) (squad *Squad, err error) {
+	err = pdm.FindOne(ctx, bson.M{"id": id}).Decode(&squad)
+	return
+}
+
 func (pdm *SquadDBManager) GetSquadsByID(ctx context.Context, pattern string, limit int64, lastIndex int64) (squads []*Squad, err error) {
 	res, err := pdm.Find(ctx, bson.D{{"id", primitive.Regex{Pattern: pattern, Options: ""}}}, options.Find().SetLimit(limit).SetSkip(lastIndex))
 	if err != nil {

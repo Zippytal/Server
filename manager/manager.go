@@ -22,6 +22,7 @@ type (
 		State       GRPCPeerState
 		DisplayName string
 		DbPeer      *Peer
+		//mux *sync.Mutex
 	}
 
 	WSPeer struct {
@@ -29,6 +30,7 @@ type (
 		DisplayName string
 		DbPeer      *Peer
 		State       WSState
+		mux         *sync.Mutex
 	}
 
 	Manager struct {
@@ -51,11 +53,18 @@ const (
 )
 
 const (
-	INCOMING_MEMBER        SquadEvent = "incoming_member"
-	HOSTED_INCOMING_MEMBER SquadEvent = "hosted_incoming_member"
-	LEAVING_MEMBER         SquadEvent = "leaving_member"
-	HOSTED_LEAVING_MEMBER  SquadEvent = "hosted_leaving_member"
-	NEW_HOSTED_SQUAD                  = "new_hosted_squad"
+	INCOMING_MEMBER                 SquadEvent = "incoming_member"
+	HOSTED_INCOMING_MEMBER          SquadEvent = "hosted_incoming_member"
+	LEAVING_MEMBER                  SquadEvent = "leaving_member"
+	HOSTED_LEAVING_MEMBER           SquadEvent = "hosted_leaving_member"
+	NEW_HOSTED_SQUAD                           = "new_hosted_squad"
+	NEW_SQUAD                                  = "new_squad"
+	NEW_FRIEND_REQUEST                         = "new_friend_request"
+	DELETE_FRIEND                              = "delete_friend"
+	NEW_AUTHORIZED_HOSTED_SQUAD                = "new_authorized_hosted_squad"
+	NEW_AUTHORIZED_SQUAD                       = "new_authorized_squad"
+	REMOVED_AUTHORIZED_HOSTED_SQUAD            = "removed_authorized_hosted_squad"
+	REMOVED_AUTHORIZED_SQUAD                   = "removed_authorized_squad"
 )
 
 const (
@@ -131,11 +140,48 @@ func (manager *Manager) AddPeerFriendRequest(peerId string, friendId string) (er
 		}
 	}
 	err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests, friendId))
+	if _, ok := manager.GRPCPeers[peerId]; ok {
+		if err := manager.GRPCPeers[peerId].Conn.Send(&Response{
+			Type:    NEW_FRIEND_REQUEST,
+			Success: true,
+			Payload: map[string]string{
+				"id": friendId,
+			},
+		}); err != nil {
+			delete(manager.GRPCPeers, peerId)
+			return err
+		}
+	} else if _, ok := manager.WSPeers[peerId]; ok {
+		manager.WSPeers[peerId].mux.Lock()
+		if err = manager.WSPeers[peerId].Conn.WriteJSON(map[string]interface{}{
+			"from":    friendId,
+			"to":      peerId,
+			"type":    NEW_FRIEND_REQUEST,
+			"payload": map[string]string{},
+		}); err != nil {
+			log.Println(err)
+			manager.WSPeers[peerId].mux.Unlock()
+			return
+		}
+		manager.WSPeers[peerId].mux.Unlock()
+	}
 	return
 }
 
 func (manager *Manager) GetPeer(peerId string) (peer *Peer, err error) {
 	peer, err = manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	return
+}
+
+func (manager *Manager) GetConnectedPeer(peerId string) (peer *Peer, err error) {
+	if _, ok := manager.WSPeers[peerId]; !ok {
+		err = fmt.Errorf("no peer found")
+		return
+	}
+	peer = &Peer{
+		Id:   peerId,
+		Name: manager.WSPeers[peerId].DisplayName,
+	}
 	return
 }
 
@@ -150,7 +196,47 @@ func (manager *Manager) RemovePeerFriend(peerId string, friendId string) (err er
 			index = i
 		}
 	}
-	err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests[:index], peer.FriendRequests[index+1:]...))
+	if err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), peerId, append(peer.FriendRequests[:index], peer.FriendRequests[index+1:]...)); err != nil {
+		return
+	}
+	friendPeer, err := manager.PeerDBManager.GetPeer(context.Background(), friendId)
+	if err != nil {
+		return
+	}
+	var x = 0
+	for i, v := range peer.FriendRequests {
+		if v == friendId {
+			x = i
+		}
+	}
+	if err = manager.PeerDBManager.UpdatePeerFriendRequests(context.Background(), friendId, append(friendPeer.FriendRequests[:x], friendPeer.FriendRequests[x+1:]...)); err != nil {
+		return
+	}
+	if _, ok := manager.GRPCPeers[peerId]; ok {
+		if err := manager.GRPCPeers[peerId].Conn.Send(&Response{
+			Type:    DELETE_FRIEND,
+			Success: true,
+			Payload: map[string]string{
+				"id": friendId,
+			},
+		}); err != nil {
+			delete(manager.GRPCPeers, peerId)
+			return err
+		}
+	} else if _, ok := manager.WSPeers[peerId]; ok {
+		manager.WSPeers[peerId].mux.Lock()
+		if err = manager.WSPeers[peerId].Conn.WriteJSON(map[string]interface{}{
+			"from":    peerId,
+			"to":      friendId,
+			"type":    DELETE_FRIEND,
+			"payload": map[string]string{},
+		}); err != nil {
+			log.Println(err)
+			manager.WSPeers[peerId].mux.Unlock()
+			return
+		}
+		manager.WSPeers[peerId].mux.Unlock()
+	}
 	return
 }
 
@@ -169,13 +255,14 @@ func (manager *Manager) UpdatePeerFriends(peerId string, friendId string) (err e
 
 func (manager *Manager) CreatePeer(peerId string, peerKey string, peerUsername string) (err error) {
 	peer := &Peer{
-		PubKey:         peerKey,
-		Id:             peerId,
-		Name:           peerUsername,
-		Friends:        []string{},
-		KnownSquadsId:  []string{},
-		FriendRequests: []string{},
-		Active:         true,
+		PubKey:              peerKey,
+		Id:                  peerId,
+		Name:                peerUsername,
+		Friends:             []string{},
+		KnownSquadsId:       []string{},
+		KnownHostedSquadsId: []string{},
+		FriendRequests:      []string{},
+		Active:              true,
 	}
 	err = manager.PeerDBManager.AddNewPeer(context.Background(), peer)
 	return
@@ -187,7 +274,7 @@ func (manager *Manager) CreateNode(nodeId string, nodeKey string, nodeUsername s
 		Id:             nodeId,
 		Name:           nodeUsername,
 		Friends:        []string{},
-		KnownSquadsId:  []string{},
+		KnownPeersId:   []string{},
 		FriendRequests: []string{},
 		Active:         true,
 	}
@@ -288,21 +375,38 @@ func (manager *Manager) CreateSquad(token string, id string, owner string, name 
 	manager.Squads[id] = &squad
 	switch squadNetworkType {
 	case MESH:
-		err = manager.SquadDBManager.AddNewSquad(context.Background(), &squad)
+		if err = manager.SquadDBManager.AddNewSquad(context.Background(), &squad); err != nil {
+			return
+		}
+		err = manager.UpdateSquadAuthorizedMembers(id, owner, squadNetworkType)
 	case HOSTED:
-		err = manager.HostedSquadDBManager.AddNewHostedSquad(context.Background(), &squad)
+		if err = manager.HostedSquadDBManager.AddNewHostedSquad(context.Background(), &squad); err != nil {
+			return
+		}
+		err = manager.UpdateSquadAuthorizedMembers(id, owner, squadNetworkType)
 	}
 	if err != nil {
 		return
 	}
 	if _, ok := manager.GRPCPeers[host]; ok {
-		_ = manager.GRPCPeers[host].Conn.Send(&Response{
-			Type:    NEW_HOSTED_SQUAD,
-			Success: true,
-			Payload: map[string]string{
-				"ID": id,
-			},
-		})
+		switch squadNetworkType {
+		case MESH:
+			_ = manager.GRPCPeers[host].Conn.Send(&Response{
+				Type:    NEW_SQUAD,
+				Success: true,
+				Payload: map[string]string{
+					"ID": id,
+				},
+			})
+		case HOSTED:
+			_ = manager.GRPCPeers[host].Conn.Send(&Response{
+				Type:    NEW_HOSTED_SQUAD,
+				Success: true,
+				Payload: map[string]string{
+					"ID": id,
+				},
+			})
+		}
 	}
 	return
 }
@@ -310,8 +414,28 @@ func (manager *Manager) CreateSquad(token string, id string, owner string, name 
 func (manager *Manager) DeleteSquad(token string, id string, from string, networkType SquadNetworkType) (err error) {
 	switch networkType {
 	case MESH:
+		squad, squadErr := manager.SquadDBManager.GetSquad(context.Background(), id)
+		if squadErr != nil {
+			err = fmt.Errorf("this squad does not exist")
+			return
+		}
+		for _, member := range squad.AuthorizedMembers {
+			if err = manager.DeleteSquadAuthorizedMembers(id, member, squad.NetworkType); err != nil {
+				return
+			}
+		}
 		err = manager.SquadDBManager.DeleteSquad(context.Background(), id)
 	case HOSTED:
+		squad, squadErr := manager.HostedSquadDBManager.GetHostedSquad(context.Background(), id)
+		if squadErr != nil {
+			err = fmt.Errorf("this hosted squad does not exist")
+			return
+		}
+		for _, member := range squad.AuthorizedMembers {
+			if err = manager.DeleteSquadAuthorizedMembers(id, member, squad.NetworkType); err != nil {
+				return
+			}
+		}
 		err = manager.HostedSquadDBManager.DeleteHostedSquad(context.Background(), id)
 	}
 	delete(manager.Squads, id)
@@ -393,6 +517,7 @@ func (manager *Manager) ConnectToSquad(token string, id string, from string, pas
 						return err
 					}
 				} else if _, ok := manager.WSPeers[member]; ok {
+					manager.WSPeers[member].mux.Lock()
 					if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
 						"from":    from,
 						"to":      member,
@@ -400,8 +525,10 @@ func (manager *Manager) ConnectToSquad(token string, id string, from string, pas
 						"payload": map[string]string{},
 					}); err != nil {
 						log.Println(err)
+						manager.WSPeers[member].mux.Unlock()
 						return
 					}
+					manager.WSPeers[member].mux.Unlock()
 				}
 			}
 		}
@@ -433,6 +560,7 @@ func (manager *Manager) ConnectToSquad(token string, id string, from string, pas
 						return err
 					}
 				} else if _, ok := manager.WSPeers[member]; ok {
+					manager.WSPeers[member].mux.Lock()
 					if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
 						"from":    from,
 						"to":      member,
@@ -440,8 +568,10 @@ func (manager *Manager) ConnectToSquad(token string, id string, from string, pas
 						"payload": map[string]string{},
 					}); err != nil {
 						log.Println(err)
+						manager.WSPeers[member].mux.Unlock()
 						return
 					}
+					manager.WSPeers[member].mux.Unlock()
 				}
 			}
 		}
@@ -514,6 +644,7 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 						return
 					}
 				} else if _, ok := manager.WSPeers[member]; ok {
+					manager.WSPeers[member].mux.Lock()
 					if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
 						"from":    from,
 						"to":      member,
@@ -521,8 +652,10 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 						"payload": map[string]string{},
 					}); err != nil {
 						log.Println(err)
+						manager.WSPeers[member].mux.Unlock()
 						return
 					}
+					manager.WSPeers[member].mux.Unlock()
 				}
 			}
 		}
@@ -544,6 +677,7 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 						return
 					}
 				} else if _, ok := manager.WSPeers[member]; ok {
+					manager.WSPeers[member].mux.Lock()
 					if err = manager.WSPeers[member].Conn.WriteJSON(map[string]interface{}{
 						"from":    from,
 						"to":      member,
@@ -551,8 +685,10 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 						"payload": map[string]string{},
 					}); err != nil {
 						log.Println(err)
+						manager.WSPeers[member].mux.Unlock()
 						return
 					}
+					manager.WSPeers[member].mux.Unlock()
 				}
 			}
 		}
@@ -602,6 +738,16 @@ func (manager *Manager) ListSquadsByID(lastIndex int64, squadId string, networkT
 		squads, err = manager.SquadDBManager.GetSquadsByID(context.Background(), squadId, 100, lastIndex)
 	case HOSTED:
 		squads, err = manager.HostedSquadDBManager.GetHostedSquadsByID(context.Background(), squadId, 100, lastIndex)
+	}
+	return
+}
+
+func (manager *Manager) GetSquadByID(squadId string, networkType SquadNetworkType) (squads *Squad, err error) {
+	switch networkType {
+	case MESH:
+		squads, err = manager.SquadDBManager.GetSquadByID(context.Background(), squadId)
+	case HOSTED:
+		squads, err = manager.HostedSquadDBManager.GetHostedSquadByID(context.Background(), squadId)
 	}
 	return
 }
@@ -664,10 +810,64 @@ func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedM
 				errCh <- err
 				return
 			}
+			if _, ok := manager.GRPCPeers[authorizedMembers]; ok {
+				if err := manager.GRPCPeers[authorizedMembers].Conn.Send(&Response{
+					Type:    NEW_AUTHORIZED_SQUAD,
+					Success: true,
+					Payload: map[string]string{
+						"id": squadId,
+					},
+				}); err != nil {
+					delete(manager.GRPCPeers, authorizedMembers)
+					return
+				}
+			} else if _, ok := manager.WSPeers[authorizedMembers]; ok {
+				manager.WSPeers[authorizedMembers].mux.Lock()
+				if err = manager.WSPeers[authorizedMembers].Conn.WriteJSON(map[string]interface{}{
+					"from": "server",
+					"to":   authorizedMembers,
+					"type": NEW_AUTHORIZED_SQUAD,
+					"payload": map[string]string{
+						"squadId": squadId,
+					},
+				}); err != nil {
+					log.Println(err)
+					manager.WSPeers[authorizedMembers].mux.Unlock()
+					return
+				}
+				manager.WSPeers[authorizedMembers].mux.Unlock()
+			}
 		case HOSTED:
 			if err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, append(squad.AuthorizedMembers, authorizedMembers)); err != nil {
 				errCh <- err
 				return
+			}
+			if _, ok := manager.GRPCPeers[authorizedMembers]; ok {
+				if err := manager.GRPCPeers[authorizedMembers].Conn.Send(&Response{
+					Type:    NEW_AUTHORIZED_HOSTED_SQUAD,
+					Success: true,
+					Payload: map[string]string{
+						"id": squadId,
+					},
+				}); err != nil {
+					delete(manager.GRPCPeers, authorizedMembers)
+					return
+				}
+			} else if _, ok := manager.WSPeers[authorizedMembers]; ok {
+				manager.WSPeers[authorizedMembers].mux.Lock()
+				if err = manager.WSPeers[authorizedMembers].Conn.WriteJSON(map[string]interface{}{
+					"from": "server",
+					"to":   authorizedMembers,
+					"type": NEW_AUTHORIZED_HOSTED_SQUAD,
+					"payload": map[string]string{
+						"squadId": squadId,
+					},
+				}); err != nil {
+					log.Println(err)
+					manager.WSPeers[authorizedMembers].mux.Unlock()
+					return
+				}
+				manager.WSPeers[authorizedMembers].mux.Unlock()
 			}
 		}
 	}()
@@ -678,16 +878,31 @@ func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedM
 			errCh <- err
 			return
 		}
-		for _, v := range peer.KnownSquadsId {
-			if v == squadId {
-				err = fmt.Errorf("squad already known")
+		switch networkType {
+		case MESH:
+			for _, v := range peer.KnownSquadsId {
+				if v == squadId {
+					err = fmt.Errorf("squad already known")
+					errCh <- err
+					return
+				}
+			}
+			if err = manager.PeerDBManager.UpdateKnownSquads(context.Background(), authorizedMembers, append(peer.KnownSquadsId, squadId)); err != nil {
 				errCh <- err
 				return
 			}
-		}
-		if err = manager.PeerDBManager.UpdateKnownSquads(context.Background(),authorizedMembers,append(peer.KnownSquadsId,squadId)); err != nil {
-			errCh <- err
-			return
+		case HOSTED:
+			for _, v := range peer.KnownHostedSquadsId {
+				if v == squadId {
+					err = fmt.Errorf("hosted squad already known")
+					errCh <- err
+					return
+				}
+			}
+			if err = manager.PeerDBManager.UpdateKnownHostedSquads(context.Background(), authorizedMembers, append(peer.KnownHostedSquadsId, squadId)); err != nil {
+				errCh <- err
+				return
+			}
 		}
 	}()
 	go func() {
@@ -703,32 +918,141 @@ func (manager *Manager) UpdateSquadAuthorizedMembers(squadId string, authorizedM
 }
 
 func (manager *Manager) DeleteSquadAuthorizedMembers(squadId string, authorizedMembers string, networkType SquadNetworkType) (err error) {
-	var squad *Squad
-	switch networkType {
-	case MESH:
-		if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+	wg, errCh, done := &sync.WaitGroup{}, make(chan error), make(chan struct{})
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		var squad *Squad
+		switch networkType {
+		case MESH:
+			if squad, err = manager.SquadDBManager.GetSquad(context.Background(), squadId); err != nil {
+				errCh <- err
+				return
+			}
+		case HOSTED:
+			if squad, err = manager.HostedSquadDBManager.GetHostedSquad(context.Background(), squadId); err != nil {
+				errCh <- err
+				return
+			}
+		}
+		var index int
+		for i, v := range squad.AuthorizedMembers {
+			if v == authorizedMembers {
+				index = i
+			}
+		}
+		squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1], squad.AuthorizedMembers[index] = squad.AuthorizedMembers[index], squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1]
+		switch networkType {
+		case MESH:
+			if err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1]); err != nil {
+				errCh <- err
+				return
+			}
+			if _, ok := manager.GRPCPeers[authorizedMembers]; ok {
+				if err := manager.GRPCPeers[authorizedMembers].Conn.Send(&Response{
+					Type:    REMOVED_AUTHORIZED_SQUAD,
+					Success: true,
+					Payload: map[string]string{
+						"id": squadId,
+					},
+				}); err != nil {
+					delete(manager.GRPCPeers, authorizedMembers)
+					return
+				}
+			} else if _, ok := manager.WSPeers[authorizedMembers]; ok {
+				manager.WSPeers[authorizedMembers].mux.Lock()
+				if err = manager.WSPeers[authorizedMembers].Conn.WriteJSON(map[string]interface{}{
+					"from": "server",
+					"to":   authorizedMembers,
+					"type": REMOVED_AUTHORIZED_SQUAD,
+					"payload": map[string]string{
+						"squadId": squadId,
+					},
+				}); err != nil {
+					log.Println(err)
+					manager.WSPeers[authorizedMembers].mux.Unlock()
+					return
+				}
+				manager.WSPeers[authorizedMembers].mux.Unlock()
+			}
+		case HOSTED:
+			if err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1]); err != nil {
+				errCh <- err
+				return
+			}
+			if _, ok := manager.GRPCPeers[authorizedMembers]; ok {
+				if err := manager.GRPCPeers[authorizedMembers].Conn.Send(&Response{
+					Type:    REMOVED_AUTHORIZED_HOSTED_SQUAD,
+					Success: true,
+					Payload: map[string]string{
+						"id": squadId,
+					},
+				}); err != nil {
+					delete(manager.GRPCPeers, authorizedMembers)
+					return
+				}
+			} else if _, ok := manager.WSPeers[authorizedMembers]; ok {
+				manager.WSPeers[authorizedMembers].mux.Lock()
+				if err = manager.WSPeers[authorizedMembers].Conn.WriteJSON(map[string]interface{}{
+					"from": "server",
+					"to":   authorizedMembers,
+					"type": REMOVED_AUTHORIZED_HOSTED_SQUAD,
+					"payload": map[string]string{
+						"squadId": squadId,
+					},
+				}); err != nil {
+					log.Println(err)
+					manager.WSPeers[authorizedMembers].mux.Unlock()
+					return
+				}
+				manager.WSPeers[authorizedMembers].mux.Unlock()
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		var peer *Peer
+		if peer, err = manager.PeerDBManager.GetPeer(context.Background(), authorizedMembers); err != nil {
+			errCh <- err
 			return
 		}
-	case HOSTED:
-		if squad, err = manager.HostedSquadDBManager.GetHostedSquad(context.Background(), squadId); err != nil {
-			return
+		switch networkType {
+		case MESH:
+			var index int
+			for i, v := range peer.KnownSquadsId {
+				if v == squadId {
+					index = i
+				}
+			}
+			peer.KnownSquadsId[len(peer.KnownSquadsId)-1], peer.KnownSquadsId[index] = peer.KnownSquadsId[index], peer.KnownSquadsId[len(peer.KnownSquadsId)-1]
+			if err = manager.PeerDBManager.UpdateKnownSquads(context.Background(), authorizedMembers, peer.KnownSquadsId[:len(peer.KnownSquadsId)-1]); err != nil {
+				errCh <- err
+				return
+			}
+		case HOSTED:
+			var index int
+			for i, v := range peer.KnownHostedSquadsId {
+				if v == squadId {
+					index = i
+				}
+			}
+			peer.KnownHostedSquadsId[len(peer.KnownHostedSquadsId)-1], peer.KnownHostedSquadsId[index] = peer.KnownHostedSquadsId[index], peer.KnownHostedSquadsId[len(peer.KnownHostedSquadsId)-1]
+			if err = manager.PeerDBManager.UpdateKnownHostedSquads(context.Background(), authorizedMembers, peer.KnownHostedSquadsId[:len(peer.KnownHostedSquadsId)-1]); err != nil {
+				errCh <- err
+				return
+			}
 		}
+	}()
+	go func() {
+		wg.Wait()
+		done <- struct{}{}
+	}()
+	select {
+	case err = <-errCh:
+		return
+	case <-done:
+		return
 	}
-	var index int
-	for i, v := range squad.AuthorizedMembers {
-		if v == authorizedMembers {
-			index = i
-		}
-	}
-	squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1], squad.AuthorizedMembers[index] = squad.AuthorizedMembers[index], squad.AuthorizedMembers[len(squad.AuthorizedMembers)-1]
-	switch networkType {
-	case MESH:
-		err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
-	case HOSTED:
-		err = manager.HostedSquadDBManager.UpdateHostedSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
-	}
-	err = manager.SquadDBManager.UpdateSquadAuthorizedMembers(context.Background(), squadId, squad.AuthorizedMembers[:len(squad.AuthorizedMembers)-1])
-	return
 }
 
 func (manager *Manager) UpdateSquadPassword(squadId string, password string) (err error) {
@@ -783,6 +1107,7 @@ func (manager *Manager) manage(peer GrpcManager_LinkServer) (err error) {
 						return
 					}
 				} else if _, ok := manager.WSPeers[to]; ok {
+					manager.WSPeers[to].mux.Lock()
 					if err = manager.WSPeers[to].Conn.WriteJSON(map[string]interface{}{
 						"from":    req.From,
 						"to":      to,
@@ -790,8 +1115,10 @@ func (manager *Manager) manage(peer GrpcManager_LinkServer) (err error) {
 						"payload": req.Payload,
 					}); err != nil {
 						log.Println(err)
+						manager.WSPeers[to].mux.Unlock()
 						return
 					}
+					manager.WSPeers[to].mux.Unlock()
 				}
 			}
 		}
