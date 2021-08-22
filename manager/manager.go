@@ -26,11 +26,14 @@ type (
 	}
 
 	WSPeer struct {
-		Conn        *websocket.Conn
-		DisplayName string
-		DbPeer      *Peer
-		State       WSState
-		mux         *sync.Mutex
+		Conn                 *websocket.Conn
+		DisplayName          string
+		DbPeer               *Peer
+		State                WSState
+		CurrentSquadId       string
+		CurrentHostedSquadId string
+		CurrentCallId        string
+		mux                  *sync.Mutex
 	}
 
 	Manager struct {
@@ -173,6 +176,44 @@ func (manager *Manager) GetPeer(peerId string) (peer *Peer, err error) {
 	return
 }
 
+func (manager *Manager) AddIncomingCall(peerId string, from string) (err error) {
+	fmt.Println("adding incoming call")
+	peer, err := manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	if err != nil {
+		return
+	}
+	manager.RWMutex.Lock()
+	if _, ok := manager.WSPeers[from]; ok {
+		manager.WSPeers[from].CurrentCallId = peerId
+	}
+	manager.RWMutex.Unlock()
+	incomingCalls := append(peer.IncomingCalls, from)
+	err = manager.PeerDBManager.UpdateIncomingCalls(context.Background(), peerId, incomingCalls)
+	return
+}
+
+func (manager *Manager) RemoveIncomingCall(peerId string, from string) (err error) {
+	peer, err := manager.PeerDBManager.GetPeer(context.Background(), peerId)
+	if err != nil {
+		return
+	}
+	var incomingCalls []string
+	if len(peer.IncomingCalls) < 2 {
+		incomingCalls = make([]string, 0)
+	} else {
+		for i, p := range peer.IncomingCalls {
+			if p == from {
+				incomingCalls = append(peer.IncomingCalls[:i], peer.IncomingCalls[i+1:]...)
+			}
+		}
+	}
+	err = manager.PeerDBManager.UpdateIncomingCalls(context.Background(), peerId, incomingCalls)
+	if _, ok := manager.WSPeers[from]; ok {
+		manager.WSPeers[from].CurrentCallId = ""
+	}
+	return
+}
+
 func (manager *Manager) GetConnectedPeer(peerId string) (peer *Peer, err error) {
 	if _, ok := manager.WSPeers[peerId]; !ok {
 		err = fmt.Errorf("no peer found")
@@ -258,6 +299,7 @@ func (manager *Manager) CreatePeer(peerId string, peerKey string, peerUsername s
 		PubKey:              peerKey,
 		Id:                  peerId,
 		Name:                peerUsername,
+		IncomingCalls:       []string{},
 		Friends:             []string{},
 		KnownSquadsId:       []string{},
 		KnownHostedSquadsId: []string{},
@@ -535,8 +577,10 @@ func (manager *Manager) ConnectToSquad(token string, id string, from string, pas
 		switch networkType {
 		case MESH:
 			err = manager.SquadDBManager.UpdateSquadMembers(context.Background(), squad.ID, squad.Members)
+			manager.WSPeers[from].CurrentSquadId = id
 		case HOSTED:
 			err = manager.HostedSquadDBManager.UpdateHostedSquadMembers(context.Background(), squad.ID, squad.Members)
+			manager.WSPeers[from].CurrentHostedSquadId = id
 		}
 		return
 	}
@@ -578,8 +622,10 @@ func (manager *Manager) ConnectToSquad(token string, id string, from string, pas
 		switch networkType {
 		case MESH:
 			err = manager.SquadDBManager.UpdateSquadMembers(context.Background(), squad.ID, squad.Members)
+			manager.WSPeers[from].CurrentSquadId = id
 		case HOSTED:
 			err = manager.HostedSquadDBManager.UpdateHostedSquadMembers(context.Background(), squad.ID, squad.Members)
+			manager.WSPeers[from].CurrentHostedSquadId = id
 		}
 		return
 	}
@@ -633,10 +679,10 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 			if member != from {
 				if _, ok := manager.GRPCPeers[member]; ok {
 					if err := manager.GRPCPeers[member].Conn.Send(&Response{
-						Type:    LEAVING,
+						Type:    "hosted_squad_stop_call",
 						Success: true,
 						Payload: map[string]string{
-							"id":      from,
+							"from":    from,
 							"squadId": id,
 						},
 					}); err != nil {
@@ -666,10 +712,10 @@ func (manager *Manager) LeaveSquad(id string, from string, networkType SquadNetw
 			if member != from {
 				if _, ok := manager.GRPCPeers[member]; ok {
 					if err := manager.GRPCPeers[member].Conn.Send(&Response{
-						Type:    LEAVING,
+						Type:    "hosted_squad_stop_call",
 						Success: true,
 						Payload: map[string]string{
-							"id":      from,
+							"from":    from,
 							"squadId": id,
 						},
 					}); err != nil {

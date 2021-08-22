@@ -144,3 +144,16 @@ func TestPeerCreate(t *testing.T) {
 		return
 	}
 }
+
+func TestPeerCall(t *testing.T) {
+	m, err := NewManager()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	err = m.AddIncomingCall("lolo_test", "Patrick")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+}

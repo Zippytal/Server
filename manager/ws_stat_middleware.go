@@ -32,11 +32,14 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 			if id == req.From {
 				if p, err := manager.PeerDBManager.GetPeer(context.Background(), req.From); err == nil {
 					manager.WSPeers[req.From] = &WSPeer{
-						State:       WS_OPEN,
-						DbPeer:      p,
-						Conn:        conn,
-						DisplayName: p.Name,
-						mux:         &sync.Mutex{},
+						State:                WS_OPEN,
+						DbPeer:               p,
+						Conn:                 conn,
+						DisplayName:          p.Name,
+						mux:                  &sync.Mutex{},
+						CurrentSquadId:       "",
+						CurrentHostedSquadId: "",
+						CurrentCallId:        "",
 					}
 					manager.Unlock()
 					return err

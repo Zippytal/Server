@@ -87,6 +87,7 @@ message Peer {
     string name = 2;
     string pubKey = 3;
     bool active = 4;
+    repeated string incomingCalls = 9;
     repeated string knownSquadsId = 5;
     repeated string knownHostedSquadsId = 8;
     repeated string friends = 6;

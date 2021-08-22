@@ -3,6 +3,7 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 )
@@ -19,12 +20,59 @@ const (
 	UPDATE_PEER_FRIENDS         = "update_peer_friends"
 	DELETE_PEER_FRIENDS         = "delete_peer_friends"
 	CREATE_PEER                 = "create_peer"
+	ADD_INCOMING_CALL           = "add_incoming_call"
+	REMOVE_INCOMING_CALL        = "remove_incoming_call"
+	SET_CURRENT_CALL            = "set_current_call"
 )
 
 type PeerHTTPMiddleware struct{}
 
 func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http.ResponseWriter, m *Manager) (err error) {
+	fmt.Println("got req in peer http middleware of type : ", r.Type)
 	switch r.Type {
+	case SET_CURRENT_CALL:
+		if err = VerifyFields(r.Payload, "peerId", "from"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if wsPeer, ok := m.WSPeers[r.Payload["from"]]; ok {
+			wsPeer.mux.Lock()
+			wsPeer.CurrentCallId = r.Payload["peerId"]
+			wsPeer.mux.Unlock()
+		}
+		err = json.NewEncoder(w).Encode(map[string]string{
+			"success": "true",
+		})
+	case ADD_INCOMING_CALL:
+		fmt.Println("incoming call")
+		if err = VerifyFields(r.Payload, "peerId", "from"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		peerErr := m.AddIncomingCall(r.Payload["peerId"], r.Payload["from"])
+		if err != nil {
+			log.Println("an error occured in add incoming call", peerErr)
+			return peerErr
+		}
+		fmt.Println("incoming call done")
+		err = json.NewEncoder(w).Encode(map[string]string{
+			"success": "true",
+		})
+	case REMOVE_INCOMING_CALL:
+		fmt.Println("removing call")
+		if err = VerifyFields(r.Payload, "peerId", "from"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		peerErr := m.RemoveIncomingCall(r.Payload["peerId"], r.Payload["from"])
+		if err != nil {
+			log.Println("an error occured in add incoming call", peerErr)
+			return peerErr
+		}
+		fmt.Println("incoming call done")
+		err = json.NewEncoder(w).Encode(map[string]string{
+			"success": "true",
+		})
 	case DELETE_PEER_FRIEND_REQUESTS:
 		if err = VerifyFields(r.Payload, "peerId", "friendId"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

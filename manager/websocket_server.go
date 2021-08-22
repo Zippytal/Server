@@ -80,9 +80,25 @@ func (wsh *WSHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			doneCh, msgCh := make(chan struct{}), make(chan []byte, 100)
 			defer close(doneCh)
 			conn.SetCloseHandler(func(code int, text string) error {
+				if _, ok := wsh.manager.WSPeers[peerId]; ok {
+					wsh.manager.WSPeers[peerId].mux.Lock()
+					_ = wsh.manager.LeaveSquad(wsh.manager.WSPeers[peerId].CurrentSquadId, peerId, MESH)
+					_ = wsh.manager.LeaveSquad(wsh.manager.WSPeers[peerId].CurrentHostedSquadId, peerId, HOSTED)
+					if _, ok := wsh.manager.WSPeers[wsh.manager.WSPeers[peerId].CurrentCallId]; ok {
+						_ = wsh.manager.WSPeers[wsh.manager.WSPeers[peerId].CurrentCallId].Conn.WriteJSON(map[string]interface{}{
+							"type": "stop_call",
+							"from": peerId,
+							"payload": map[string]string{
+								"userId": peerId,
+							},
+						})
+					}
+					_ = wsh.manager.RemoveIncomingCall(wsh.manager.WSPeers[peerId].CurrentCallId, peerId)
+					wsh.manager.WSPeers[peerId].mux.Unlock()
+				}
+				delete(wsh.manager.WSPeers, peerId)
 				close(doneCh)
 				close(msgCh)
-				delete(wsh.manager.WSPeers, peerId)
 				return nil
 			})
 			go func() {
@@ -153,13 +169,11 @@ func (wsh *WSHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	select {
 	case <-req.Context().Done():
 		log.Println(req.Context().Err())
-		delete(wsh.manager.WSPeers, peerId)
 		return
 	case <-done:
 		return
 	case err := <-errCh:
 		log.Println(err)
-		delete(wsh.manager.WSPeers, peerId)
 		return
 	}
 }
