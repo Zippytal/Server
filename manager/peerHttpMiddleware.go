@@ -3,7 +3,6 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 )
@@ -28,7 +27,6 @@ const (
 type PeerHTTPMiddleware struct{}
 
 func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http.ResponseWriter, m *Manager) (err error) {
-	fmt.Println("got req in peer http middleware of type : ", r.Type)
 	switch r.Type {
 	case SET_CURRENT_CALL:
 		if err = VerifyFields(r.Payload, "peerId", "from"); err != nil {
@@ -44,14 +42,12 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			"success": "true",
 		})
 	case ADD_INCOMING_CALL:
-		fmt.Println("incoming call")
 		if err = VerifyFields(r.Payload, "peerId", "from"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		peerErr := m.AddIncomingCall(r.Payload["peerId"], r.Payload["from"])
 		if err != nil {
-			log.Println("an error occured in add incoming call", peerErr)
 			return peerErr
 		}
 		fmt.Println("incoming call done")
@@ -66,10 +62,8 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 		}
 		peerErr := m.RemoveIncomingCall(r.Payload["peerId"], r.Payload["from"])
 		if err != nil {
-			log.Println("an error occured in add incoming call", peerErr)
 			return peerErr
 		}
-		fmt.Println("incoming call done")
 		err = json.NewEncoder(w).Encode(map[string]string{
 			"success": "true",
 		})
