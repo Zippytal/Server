@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -30,7 +29,7 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 		manager.Lock()
 		if id, ok := manager.AuthManager.AuthTokenValid[req.Token]; ok {
 			if id == req.From {
-				if p, err := manager.PeerDBManager.GetPeer(context.Background(), req.From); err == nil {
+				if p, err := manager.GetPeer(req.From); err == nil {
 					manager.WSPeers[req.From] = &WSPeer{
 						State:                WS_OPEN,
 						DbPeer:               p,
@@ -47,9 +46,13 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 			}
 		}
 		manager.WSPeers[req.From] = &WSPeer{
-			State: WS_OPEN,
-			Conn:  conn,
-			mux:   &sync.Mutex{},
+			State:                WS_OPEN,
+			Conn:                 conn,
+			mux:                  &sync.Mutex{},
+			DisplayName:          "anonymous",
+			CurrentSquadId:       "",
+			CurrentHostedSquadId: "",
+			CurrentCallId:        "",
 		}
 		manager.Unlock()
 		return
@@ -57,7 +60,6 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 		fmt.Println(manager.WSPeers)
 		if ws, ok := manager.WSPeers[req.To]; ok {
 			wsm.lock.Lock()
-			defer wsm.lock.Unlock()
 			if err = ws.Conn.WriteJSON(map[string]interface{}{
 				"from":    req.From,
 				"to":      req.To,
@@ -65,8 +67,10 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 				"payload": req.Payload,
 			}); err != nil {
 				log.Println(err)
+				wsm.lock.Unlock()
 				return
 			}
+			wsm.lock.Unlock()
 		} else if grpc, ok := manager.GRPCPeers[req.To]; ok {
 			payload := make(map[string]string)
 			for i, v := range req.Payload {
@@ -74,14 +78,17 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 			}
 			payload["to"] = req.To
 			payload["from"] = req.From
+			manager.GRPCPeers[req.To].mux.Lock()
 			if err = grpc.Conn.Send(&Response{
 				Type:    req.Type,
 				Success: true,
 				Payload: payload,
 			}); err != nil {
 				log.Println(err)
+				manager.GRPCPeers[req.To].mux.Unlock()
 				return
 			}
+			manager.GRPCPeers[req.To].mux.Unlock()
 		} else {
 			err = fmt.Errorf("no corresponding peer for id %s", req.To)
 			return

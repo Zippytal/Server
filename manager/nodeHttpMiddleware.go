@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,9 +14,17 @@ const (
 	SET_NODE_ACTIVE
 )
 
-type NodeHTTPMiddleware struct{}
+type NodeHTTPMiddleware struct {
+	manager *Manager
+}
 
-func (shm *NodeHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http.ResponseWriter, m *Manager) (err error) {
+func NewNodeHTTPMiddleware(manager *Manager) *NodeHTTPMiddleware {
+	return &NodeHTTPMiddleware{
+		manager: manager,
+	}
+}
+
+func (shm *NodeHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req *http.Request, w http.ResponseWriter) (err error) {
 	fmt.Println("node middleware called")
 	fmt.Println(r.From, r.Type)
 	switch r.Type {
@@ -25,7 +34,7 @@ func (shm *NodeHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.CreateNode(r.Payload["nodeId"], r.Payload["nodeKey"], r.Payload["nodeUsername"]); err != nil {
+		if err = shm.manager.CreateNode(r.Payload["nodeId"], r.Payload["nodeKey"], r.Payload["nodeUsername"]); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -33,34 +42,7 @@ func (shm *NodeHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			"success": "true",
 		})
 	case GET_NODE:
-		if err = VerifyFields(r.Payload, "peerId"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		token, tokenErr := m.PeerAuthInit(r.Payload["peerId"])
-		if tokenErr != nil {
-			http.Error(w, tokenErr.Error(), http.StatusInternalServerError)
-			return tokenErr
-		}
-		err = json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"peerId":  r.Payload["peerId"],
-			"token":   token,
-		})
 	case DELETE_NODE:
-		if err = VerifyFields(r.Payload, "token", "peerId"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err = m.PeerAuthVerif(r.Payload["peerId"], []byte(r.Payload["token"])); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		err = json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"peerId":  r.Payload["peerId"],
-			"token":   r.Payload["token"],
-		})
 	}
 	return
 }

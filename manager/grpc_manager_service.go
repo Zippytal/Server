@@ -110,10 +110,10 @@ func (service *GRPCManagerService) CreateSquad(ctx context.Context, req *SquadCr
 			errch <- uidErr
 			return
 		}
-		if err := service.Manager.CreateSquad(req.Token, uid.String(), req.UserId, req.Name, SquadType(req.SquadType), req.Password, "mesh", "lolo_local_serv"); err != nil {
-			errch <- err
-			return
-		}
+		// if err := service.Manager.CreateSquad(req.Token, uid.String(), req.UserId, req.Name, SquadType(req.SquadType), req.Password, "mesh", "lolo_local_serv"); err != nil {
+		// 	errch <- err
+		// 	return
+		// }
 		done <- &SquadCreateResponse{
 			Success: true,
 			Reason:  "Squad creation succes",
@@ -139,10 +139,10 @@ func (service *GRPCManagerService) CreateSquad(ctx context.Context, req *SquadCr
 func (service *GRPCManagerService) UpdateSquad(ctx context.Context, req *SquadUpdateRequest) (res *SquadUpdateResponse, err error) {
 	done, errch := make(chan *SquadUpdateResponse), make(chan error)
 	go func() {
-		if err := service.Manager.ModifySquad(req.Token, req.Id, req.UserId, req.Name, SquadType(req.SquadType), req.Password); err != nil {
-			errch <- err
-			return
-		}
+		// if err := service.Manager.ModifySquad(req.Token, req.Id, req.UserId, req.Name, SquadType(req.SquadType), req.Password); err != nil {
+		// 	errch <- err
+		// 	return
+		// }
 		done <- &SquadUpdateResponse{
 			Success: true,
 			Reason:  fmt.Sprintf("Squad %s updated", req.Id),
@@ -169,10 +169,10 @@ func (service *GRPCManagerService) UpdateSquad(ctx context.Context, req *SquadUp
 func (service *GRPCManagerService) DeleteSquad(ctx context.Context, req *SquadDeleteRequest) (res *SquadDeleteResponse, err error) {
 	done, errch := make(chan *SquadDeleteResponse), make(chan error)
 	go func() {
-		if err := service.Manager.DeleteSquad(req.Token, req.SquadId, req.UserId, MESH); err != nil {
-			errch <- err
-			return
-		}
+		// if err := service.Manager.DeleteSquad(req.Token, req.SquadId, req.UserId, MESH); err != nil {
+		// 	errch <- err
+		// 	return
+		// }
 		done <- &SquadDeleteResponse{
 			Succes: true,
 			Reason: fmt.Sprintf("Squad %s deleted", req.SquadId),
@@ -228,10 +228,10 @@ func (service *GRPCManagerService) ListSquad(ctx context.Context, req *SquadList
 func (service *GRPCManagerService) ConnectSquad(ctx context.Context, req *SquadConnectRequest) (res *SquadConnectResponse, err error) {
 	done, errch := make(chan *SquadConnectResponse), make(chan error)
 	go func() {
-		if err := service.Manager.ConnectToSquad(req.Token, req.Id, req.UserId, req.Password, ""); err != nil {
-			errch <- err
-			return
-		}
+		// if err := service.Manager.ConnectToSquad(req.Token, req.Id, req.UserId, req.Password, ""); err != nil {
+		// 	errch <- err
+		// 	return
+		// }
 		done <- &SquadConnectResponse{
 			Success: true,
 			Reason:  fmt.Sprintf("connected to squad %s", req.Id),
@@ -252,10 +252,10 @@ func (service *GRPCManagerService) ConnectSquad(ctx context.Context, req *SquadC
 func (service *GRPCManagerService) LeaveSquad(ctx context.Context, req *SquadLeaveRequest) (res *SquadLeaveResponse, err error) {
 	done, errch := make(chan *SquadLeaveResponse), make(chan error)
 	go func() {
-		if err := service.Manager.LeaveSquad(req.SquadId, req.UserId, ""); err != nil {
-			errch <- err
-			return
-		}
+		// if err := service.Manager.LeaveSquad(req.SquadId, req.UserId, ""); err != nil {
+		// 	errch <- err
+		// 	return
+		// }
 		done <- &SquadLeaveResponse{
 			Success: true,
 			Reason:  fmt.Sprintf("left squad %s", req.SquadId),

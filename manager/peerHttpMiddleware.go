@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,16 +25,24 @@ const (
 	SET_CURRENT_CALL            = "set_current_call"
 )
 
-type PeerHTTPMiddleware struct{}
+type PeerHTTPMiddleware struct {
+	manager *Manager
+}
 
-func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http.ResponseWriter, m *Manager) (err error) {
+func NewPeerHTTPMiddleware(manager *Manager) *PeerHTTPMiddleware {
+	return &PeerHTTPMiddleware{
+		manager: manager,
+	}
+}
+
+func (phm *PeerHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req *http.Request, w http.ResponseWriter) (err error) {
 	switch r.Type {
 	case SET_CURRENT_CALL:
 		if err = VerifyFields(r.Payload, "peerId", "from"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if wsPeer, ok := m.WSPeers[r.Payload["from"]]; ok {
+		if wsPeer, ok := phm.manager.WSPeers[r.Payload["from"]]; ok {
 			wsPeer.mux.Lock()
 			wsPeer.CurrentCallId = r.Payload["peerId"]
 			wsPeer.mux.Unlock()
@@ -46,7 +55,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peerErr := m.AddIncomingCall(r.Payload["peerId"], r.Payload["from"])
+		peerErr := phm.manager.AddIncomingCall(r.Payload["peerId"], r.Payload["from"])
 		if err != nil {
 			return peerErr
 		}
@@ -60,7 +69,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peerErr := m.RemoveIncomingCall(r.Payload["peerId"], r.Payload["from"])
+		peerErr := phm.manager.RemoveIncomingCall(r.Payload["peerId"], r.Payload["from"])
 		if err != nil {
 			return peerErr
 		}
@@ -72,7 +81,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peerErr := m.RemovePeerFriendRequest(r.Payload["peerId"], r.Payload["friendId"])
+		peerErr := phm.manager.RemovePeerFriendRequest(r.Payload["peerId"], r.Payload["friendId"])
 		if err != nil {
 			return peerErr
 		}
@@ -85,7 +94,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peerErr := m.AddPeerFriendRequest(r.Payload["peerId"], r.Payload["friendId"])
+		peerErr := phm.manager.AddPeerFriendRequest(r.Payload["peerId"], r.Payload["friendId"])
 		if err != nil {
 			return peerErr
 		}
@@ -98,11 +107,11 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peerErr := m.RemovePeerFriend(r.Payload["peerId"], r.Payload["friendId"])
+		peerErr := phm.manager.RemovePeerFriend(r.Payload["peerId"], r.Payload["friendId"])
 		if peerErr != nil {
 			return peerErr
 		}
-		peerErr = m.RemovePeerFriend(r.Payload["friendId"], r.Payload["peerId"])
+		peerErr = phm.manager.RemovePeerFriend(r.Payload["friendId"], r.Payload["peerId"])
 		if peerErr != nil {
 			return peerErr
 		}
@@ -115,15 +124,15 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peerErr := m.UpdatePeerFriends(r.Payload["peerId"], r.Payload["friendId"])
+		peerErr := phm.manager.UpdatePeerFriends(r.Payload["peerId"], r.Payload["friendId"])
 		if peerErr != nil {
 			return peerErr
 		}
-		peerErr = m.UpdatePeerFriends(r.Payload["friendId"], r.Payload["peerId"])
+		peerErr = phm.manager.UpdatePeerFriends(r.Payload["friendId"], r.Payload["peerId"])
 		if peerErr != nil {
 			return peerErr
 		}
-		peerErr = m.RemovePeerFriendRequest(r.Payload["peerId"], r.Payload["friendId"])
+		peerErr = phm.manager.RemovePeerFriendRequest(r.Payload["peerId"], r.Payload["friendId"])
 		if peerErr != nil {
 			return peerErr
 		}
@@ -136,7 +145,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peer, peerErr := m.GetPeer(r.Payload["peerId"])
+		peer, peerErr := phm.manager.GetPeer(r.Payload["peerId"])
 		if err != nil {
 			return peerErr
 		}
@@ -147,7 +156,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		peer, peerErr := m.GetConnectedPeer(r.Payload["peerId"])
+		peer, peerErr := phm.manager.GetConnectedPeer(r.Payload["peerId"])
 		if err != nil {
 			return peerErr
 		}
@@ -159,7 +168,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			return
 		}
 		peers := []*Peer{}
-		for id, w := range m.WSPeers {
+		for id, w := range phm.manager.WSPeers {
 			fmt.Println(w.DbPeer)
 			if w.DbPeer == nil {
 				peers = append(peers, &Peer{
@@ -170,7 +179,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 				peers = append(peers, w.DbPeer)
 			}
 		}
-		for id, g := range m.GRPCPeers {
+		for id, g := range phm.manager.GRPCPeers {
 			fmt.Println(g.DbPeer)
 			if g.DbPeer == nil {
 				peers = append(peers, &Peer{
@@ -192,7 +201,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		peers, err := m.ListAllPeers(int64(lastIndex))
+		peers, err := phm.manager.ListAllPeers(int64(lastIndex))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -208,7 +217,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		peers, err := m.ListPeersByID(int64(lastIndex), r.Payload["peerId"])
+		peers, err := phm.manager.ListPeersByID(int64(lastIndex), r.Payload["peerId"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -224,7 +233,7 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		peers, err := m.ListPeersByName(int64(lastIndex), r.Payload["peerName"])
+		peers, err := phm.manager.ListPeersByName(int64(lastIndex), r.Payload["peerName"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -235,13 +244,54 @@ func (shm *PeerHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.CreatePeer(r.Payload["peerId"], r.Payload["peerKey"], r.Payload["peerName"]); err != nil {
+		if err = phm.manager.CreatePeer(r.Payload["peerId"], r.Payload["peerKey"], r.Payload["peerName"]); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		err = json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"peerId":  r.Payload["peerId"],
+		})
+	case AUTHENTICATE:
+		if err = VerifyFields(r.Payload, "token", "peerId"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err = phm.manager.Authenticate(r.Payload["peerId"], r.Payload["token"]); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		err = json.NewEncoder(w).Encode(map[string]string{
+			"success": "true",
+		})
+	case PEER_AUTH_INIT:
+		if err = VerifyFields(r.Payload, "peerId"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		token, tokenErr := phm.manager.PeerAuthInit(r.Payload["peerId"])
+		if tokenErr != nil {
+			http.Error(w, tokenErr.Error(), http.StatusInternalServerError)
+			return tokenErr
+		}
+		err = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"peerId":  r.Payload["peerId"],
+			"token":   token,
+		})
+	case PEER_AUTH_VERIFY:
+		if err = VerifyFields(r.Payload, "token", "peerId"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err = phm.manager.PeerAuthVerif(r.Payload["peerId"], []byte(r.Payload["token"])); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"peerId":  r.Payload["peerId"],
+			"token":   r.Payload["token"],
 		})
 	}
 	return

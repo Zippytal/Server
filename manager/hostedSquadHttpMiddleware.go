@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -27,9 +28,17 @@ const (
 	UPDATE_HOSTED_SQUAD_PASSWORD           = "update_hosted_squad_password"
 )
 
-type HostedSquadHTTPMiddleware struct{}
+type HostedSquadHTTPMiddleware struct {
+	manager *Manager
+}
 
-func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request, w http.ResponseWriter, m *Manager) (err error) {
+func NewHostedSquadHTTPMiddleware(manager *Manager) *HostedSquadHTTPMiddleware {
+	return &HostedSquadHTTPMiddleware{
+		manager: manager,
+	}
+}
+
+func (shm *HostedSquadHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req *http.Request, w http.ResponseWriter) (err error) {
 	switch r.Type {
 	case GET_HOSTED_SQUADS_BY_OWNER:
 		if err = VerifyFields(r.Payload, "owner", "lastIndex", "networkType"); err != nil {
@@ -41,7 +50,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, "field lastIndex is not an int", http.StatusBadRequest)
 			return err
 		}
-		squads, err := m.GetSquadSByOwner(r.Token, r.Payload["owner"], int64(lastIndex), r.Payload["networkType"])
+		squads, err := shm.manager.GetHostedSquadByOwner(r.Token, r.Payload["owner"], int64(lastIndex), r.Payload["networkType"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return err
@@ -55,7 +64,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.ConnectToSquad(r.Token, r.Payload["squadId"], r.From, r.Payload["password"], r.Payload["networkType"]); err != nil {
+		if err = shm.manager.ConnectToHostedSquad(r.Token, r.Payload["squadId"], r.From, r.Payload["password"], r.Payload["networkType"]); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
@@ -73,7 +82,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		squads, err := m.ListAllSquads(int64(lastIndex), r.Payload["networkType"])
+		squads, err := shm.manager.ListAllHostedSquads(int64(lastIndex), r.Payload["networkType"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -89,7 +98,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		squads, err := m.ListSquadsByName(int64(lastIndex), r.Payload["squadName"], r.Payload["networkType"])
+		squads, err := shm.manager.ListHostedSquadsByName(int64(lastIndex), r.Payload["squadName"], r.Payload["networkType"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -105,7 +114,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		squads, err := m.ListSquadsByHost(int64(lastIndex), r.Payload["host"], HOSTED)
+		squads, err := shm.manager.ListHostedSquadsByHost(int64(lastIndex), r.Payload["host"], HOSTED)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -121,7 +130,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		squads, err := m.ListSquadsByID(int64(lastIndex), r.Payload["squadId"], r.Payload["networkType"])
+		squads, err := shm.manager.ListHostedSquadsByID(int64(lastIndex), r.Payload["squadId"], r.Payload["networkType"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -132,7 +141,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		squad, err := m.GetSquadByID(r.Payload["squadId"], HOSTED)
+		squad, err := shm.manager.GetHostedSquadByID(r.Payload["squadId"], HOSTED)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -143,7 +152,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.LeaveSquad(r.Payload["squadId"], r.From, r.Payload["squadNetworkType"]); err != nil {
+		if err = shm.manager.LeaveHostedSquad(r.Payload["squadId"], r.From, r.Payload["squadNetworkType"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -163,7 +172,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 				return
 			}
 		}
-		if err = m.CreateSquad(r.Token, r.Payload["squadId"], r.From, r.Payload["squadName"], SquadType(r.Payload["squadType"]), r.Payload["password"], r.Payload["squadNetworkType"], r.Payload["squadHost"]); err != nil {
+		if err = shm.manager.CreateHostedSquad(r.Token, r.Payload["squadId"], r.From, r.Payload["squadName"], SquadType(r.Payload["squadType"]), r.Payload["password"], r.Payload["squadNetworkType"], r.Payload["squadHost"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -175,7 +184,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.DeleteSquad(r.Token, r.Payload["squadId"], r.From, HOSTED); err != nil {
+		if err = shm.manager.DeleteHostedSquad(r.Token, r.Payload["squadId"], r.From, HOSTED); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -187,7 +196,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.ModifySquad(r.Token, r.Payload["squadId"], r.From, r.Payload["squadName"], SquadType(r.Payload["squadType"]), r.Payload["password"]); err != nil {
+		if err = shm.manager.ModifyHostedSquad(r.Token, r.Payload["squadId"], r.From, r.Payload["squadName"], SquadType(r.Payload["squadType"]), r.Payload["password"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -199,7 +208,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.UpdateSquadName(r.Payload["squadId"], r.Payload["squadName"], r.Payload["networkType"]); err != nil {
+		if err = shm.manager.UpdateHostedSquadName(r.Payload["squadId"], r.Payload["squadName"], r.Payload["networkType"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -211,7 +220,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.UpdateSquadPassword(r.Payload["squadId"], r.Payload["password"]); err != nil {
+		if err = shm.manager.UpdateHostedSquadPassword(r.Payload["squadId"], r.Payload["password"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -223,7 +232,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.UpdateSquadAuthorizedMembers(r.Payload["squadId"], r.Payload["authorizedMember"], r.Payload["networkType"]); err != nil {
+		if err = shm.manager.UpdateHostedSquadAuthorizedMembers(r.Payload["squadId"], r.Payload["authorizedMember"], r.Payload["networkType"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -235,7 +244,7 @@ func (shm *HostedSquadHTTPMiddleware) Process(r *ServRequest, req *http.Request,
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = m.DeleteSquadAuthorizedMembers(r.Payload["squadId"], r.Payload["authorizedMember"], r.Payload["networkType"]); err != nil {
+		if err = shm.manager.DeleteHostedSquadAuthorizedMembers(r.Payload["squadId"], r.Payload["authorizedMember"], HOSTED); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

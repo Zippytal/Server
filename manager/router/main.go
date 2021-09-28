@@ -22,8 +22,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	h := manager.NewWSHandler(m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{&manager.SquadHTTPMiddleware{}, &manager.AuthHTTPMiddleware{}, &manager.HostedSquadHTTPMiddleware{}, &manager.PeerHTTPMiddleware{},&manager.NodeHTTPMiddleware{}})
-	serv := manager.NewWSServ(":9999", h)
+	h := manager.NewWSHandler("app",m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{manager.NewSquadHTTPMiddleware(m), &manager.AuthHTTPMiddleware{}, manager.NewHostedSquadHTTPMiddleware(m), manager.NewPeerHTTPMiddleware(m),manager.NewNodeHTTPMiddleware(m),manager.NewZoneHTTPMiddleware(m)})
+	h2 := manager.NewWSHandler("web",m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{manager.NewSquadHTTPMiddleware(m), &manager.AuthHTTPMiddleware{}, manager.NewHostedSquadHTTPMiddleware(m), manager.NewPeerHTTPMiddleware(m),manager.NewNodeHTTPMiddleware(m)})
 	fmt.Println("server launch")
 	certFile := "/etc/letsencrypt/live/app.zippytal.com/fullchain.pem"
 	keyFile := "/etc/letsencrypt/live/app.zippytal.com/privkey.pem"
@@ -31,9 +31,6 @@ func main() {
 	keyFileW := "/etc/letsencrypt/live/zippytal.com/privkey.pem"
 	certFileDev := "/etc/letsencrypt/live/dev.zippytal.com/fullchain.pem"
 	keyFileDev := "/etc/letsencrypt/live/dev.zippytal.com/privkey.pem"
-	go func() {
-		log.Fatalln(serv.Server.ListenAndServeTLS(certFile, keyFile))
-	}()
 	go func() {
 		tlsConfig := &tls.Config{}
 		tlsConfig.Certificates = make([]tls.Certificate, 3)
@@ -52,8 +49,8 @@ func main() {
 		}
 		http.Handle("app.zippytal.com/", h)
 		http.Handle("https://app.zippytal.com/", h)
-		http.Handle("dev.zippytal.com/", h)
-		http.Handle("https://dev.zippytal.com/", h)
+		http.Handle("dev.zippytal.com/", h2)
+		http.Handle("https://dev.zippytal.com/", h2)
 		http.HandleFunc("zippytal.com/", func(rw http.ResponseWriter, r *http.Request) {
 			if _, err := os.Stat("./website/" + r.URL.Path); os.IsNotExist(err) {
 				http.ServeFile(rw, r, "./website/index.html")

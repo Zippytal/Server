@@ -90,6 +90,7 @@ message Peer {
     repeated string incomingCalls = 9;
     repeated string knownSquadsId = 5;
     repeated string knownHostedSquadsId = 8;
+    repeated string knownZonesId = 10;
     repeated string friends = 6;
     repeated string friendRequests = 7;
 }
