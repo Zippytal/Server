@@ -136,7 +136,15 @@ func (zm *ZoneManager) GetZoneByID(zoneId string) (zones *Zone, err error) {
 	return
 }
 
-func (zm *ZoneManager) LeaveZone(zoneId string, from string) (err error) {
+func (zm *ZoneManager) LeaveZone(token string,zoneId string, from string) (err error) {
+	if _, ok := zm.authManager.AuthTokenValid[token]; !ok {
+		err = fmt.Errorf("not a valid token provided")
+		return
+	}
+	if zm.authManager.AuthTokenValid[token] != from {
+		err = fmt.Errorf("invalid access")
+		return
+	}
 	var zone *Zone
 	if zone, err = zm.DB.GetZone(context.Background(), zoneId); err != nil {
 		return
@@ -152,6 +160,9 @@ func (zm *ZoneManager) LeaveZone(zoneId string, from string) (err error) {
 		zone.ConnectedMembers = make([]string, 0)
 	} else {
 		zone.ConnectedMembers = append(zone.ConnectedMembers[:memberIndex], zone.ConnectedMembers[memberIndex+1:]...)
+	}
+	if err = zm.DB.UpdateZoneMembers(context.Background(),zoneId,zone.ConnectedMembers); err != nil {
+		return
 	}
 	signalLeaving := func(to []string) {
 		for _, member := range to {
@@ -193,6 +204,14 @@ func (zm *ZoneManager) LeaveZone(zoneId string, from string) (err error) {
 }
 
 func (zm *ZoneManager) CreateZone(token string, zoneId string, owner string, zoneName string, password string, zoneHost string) (err error) {
+	if _, ok := zm.authManager.AuthTokenValid[token]; !ok {
+		err = fmt.Errorf("not a valid token provided")
+		return
+	}
+	if zm.authManager.AuthTokenValid[token] != owner {
+		err = fmt.Errorf("invalid access")
+		return
+	}
 	var zonePass string
 	if output, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost); err != nil {
 		return err
@@ -229,6 +248,14 @@ func (zm *ZoneManager) CreateZone(token string, zoneId string, owner string, zon
 }
 
 func (zm *ZoneManager) DeleteZone(token string, zoneId string, from string) (err error) {
+	if _, ok := zm.authManager.AuthTokenValid[token]; !ok {
+		err = fmt.Errorf("not a valid token provided")
+		return
+	}
+	if zm.authManager.AuthTokenValid[token] != from {
+		err = fmt.Errorf("invalid access")
+		return
+	}
 	zone, zoneErr := zm.DB.GetZone(context.Background(), zoneId)
 	if zoneErr != nil {
 		err = fmt.Errorf("this zone does not exist")

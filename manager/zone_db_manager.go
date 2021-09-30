@@ -22,7 +22,7 @@ func NewZoneDBManager(host string, port int) (hostedDBManager *ZoneDBManager, er
 		dbManagerCh, errC := NewDbManager(context.Background(), DB_NAME, host, port)
 		select {
 		case dbManager := <-dbManagerCh:
-			ZoneDBManagerCh <- &ZoneDBManager{dbManager.Db.Collection(HOSTED_SQUAD_COLLECTION_NAME)}
+			ZoneDBManagerCh <- &ZoneDBManager{dbManager.Db.Collection(ZONE_COLLECTION_NAME)}
 		case e := <-errC:
 			errCh <- e
 		}
@@ -130,14 +130,14 @@ func (pdm *ZoneDBManager) UpdateZoneStatus(ctx context.Context, zoneId string, n
 
 func (pdm *ZoneDBManager) UpdateZoneMembers(ctx context.Context, zoneId string, members []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": zoneId}, bson.D{
-		{"$set", bson.D{{"members", members}}},
+		{"$set", bson.D{{"connectedmembers", members}}},
 	})
 	return
 }
 
 func (pdm *ZoneDBManager) UpdateZoneAuthorizedMembers(ctx context.Context, zoneId string, authorizedMembers []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": zoneId}, bson.D{
-		{"$set", bson.D{{"authorizedMembers", authorizedMembers}}},
+		{"$set", bson.D{{"authorizedmembers", authorizedMembers}}},
 	})
 	return
 }

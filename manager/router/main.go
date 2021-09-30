@@ -23,7 +23,7 @@ func main() {
 		log.Fatal(err)
 	}
 	h := manager.NewWSHandler("app",m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{manager.NewSquadHTTPMiddleware(m), &manager.AuthHTTPMiddleware{}, manager.NewHostedSquadHTTPMiddleware(m), manager.NewPeerHTTPMiddleware(m),manager.NewNodeHTTPMiddleware(m),manager.NewZoneHTTPMiddleware(m)})
-	h2 := manager.NewWSHandler("web",m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{manager.NewSquadHTTPMiddleware(m), &manager.AuthHTTPMiddleware{}, manager.NewHostedSquadHTTPMiddleware(m), manager.NewPeerHTTPMiddleware(m),manager.NewNodeHTTPMiddleware(m)})
+	h2 := manager.NewWSHandler("web",m, []manager.WSMiddleware{manager.NewWSStateMiddleware()}, []manager.HTTPMiddleware{manager.NewSquadHTTPMiddleware(m), &manager.AuthHTTPMiddleware{}, manager.NewHostedSquadHTTPMiddleware(m), manager.NewPeerHTTPMiddleware(m),manager.NewNodeHTTPMiddleware(m),manager.NewZoneHTTPMiddleware(m)})
 	fmt.Println("server launch")
 	certFile := "/etc/letsencrypt/live/app.zippytal.com/fullchain.pem"
 	keyFile := "/etc/letsencrypt/live/app.zippytal.com/privkey.pem"

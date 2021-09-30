@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -44,6 +45,7 @@ func NewZoneHTTPMiddleware(manager *Manager) *ZoneHTTPMiddleware {
 }
 
 func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req *http.Request, w http.ResponseWriter) (err error) {
+	fmt.Println("zone http middleware called")
 	switch r.Type {
 	case GET_ZONES_BY_OWNER:
 		if err = VerifyFields(r.Payload, "owner", "lastIndex"); err != nil {
@@ -103,7 +105,7 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 			http.Error(w, "provide a valid integer for last index", http.StatusBadRequest)
 			return err
 		}
-		zones, err := zhm.manager.ListZonesByName(int64(lastIndex), r.Payload["squadName"])
+		zones, err := zhm.manager.ListZonesByName(int64(lastIndex), r.Payload["zoneName"])
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return err
@@ -153,11 +155,11 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 		}
 		err = json.NewEncoder(w).Encode(squad)
 	case LEAVE_ZONE:
-		if err = VerifyFields(r.Payload, "zoneId", "squadNetworkType"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = zhm.manager.LeaveZone(r.Payload["zoneId"], r.From); err != nil {
+		if err = zhm.manager.LeaveZone(r.Token,r.Payload["zoneId"], r.From); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -167,17 +169,15 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 		})
 	case SQUAD_AUTH:
 	case CREATE_ZONE:
-		if err = VerifyFields(r.Payload, "zoneId", "password", "squadType", "squadName", "squadNetworkType"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId", "password", "zoneName","zoneHost"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if r.Payload["squadNetworkType"] == HOSTED {
-			if _, ok := r.Payload["squadHost"]; !ok {
-				http.Error(w, "no field squadHost in payload", http.StatusBadRequest)
-				return
-			}
+		if _, ok := r.Payload["zoneHost"]; !ok {
+			http.Error(w, "no field zoneHost in payload", http.StatusBadRequest)
+			return
 		}
-		if err = zhm.manager.CreateZone(r.Token, r.Payload["zoneId"], r.From, r.Payload["squadName"], r.Payload["password"], r.Payload["squadHost"]); err != nil {
+		if err = zhm.manager.CreateZone(r.Token, r.Payload["zoneId"], r.From, r.Payload["zoneName"], r.Payload["password"], r.Payload["zoneHost"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -197,11 +197,11 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 			"success": true,
 		})
 	case MODIFY_ZONE:
-		if err = VerifyFields(r.Payload, "zoneId", "password", "squadName", "squadType"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId", "password", "zoneName", "squadType"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = zhm.manager.ModifyZone(r.Token, r.Payload["zoneId"], r.From, r.Payload["squadName"], r.Payload["password"]); err != nil {
+		if err = zhm.manager.ModifyZone(r.Token, r.Payload["zoneId"], r.From, r.Payload["zoneName"], r.Payload["password"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -209,11 +209,11 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 			"success": true,
 		})
 	case UPDATE_ZONE_NAME:
-		if err = VerifyFields(r.Payload, "zoneId", "squadName", "networkType"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId", "zoneName"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = zhm.manager.UpdateZoneName(r.Payload["zoneId"], r.Payload["squadName"]); err != nil {
+		if err = zhm.manager.UpdateZoneName(r.Payload["zoneId"], r.Payload["zoneName"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -233,7 +233,7 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 			"success": true,
 		})
 	case UPDATE_ZONE_AUTHORIZED_MEMBERS:
-		if err = VerifyFields(r.Payload, "zoneId", "authorizedMember", "networkType"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId", "authorizedMember"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -245,7 +245,7 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 			"success": true,
 		})
 	case DELETE_ZONE_AUTHORIZED_MEMBERS:
-		if err = VerifyFields(r.Payload, "zoneId", "authorizedMember", "networkType"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId", "authorizedMember"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
