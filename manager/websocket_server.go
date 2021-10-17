@@ -90,13 +90,16 @@ func (wsh *WSHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 			defer conn.Close()
-			doneCh, msgCh := make(chan struct{}), make(chan []byte, 100)
+			doneCh, msgCh := make(chan struct{}), make(chan []byte)
 			conn.SetCloseHandler(func(code int, text string) error {
 				close(doneCh)
 				close(msgCh)
 				wsh.manager.Lock()
 				if _, ok := wsh.manager.WSPeers[peerId]; ok {
 					wsh.manager.WSPeers[peerId].mux.Lock()
+					if wsh.manager.WSPeers[peerId].CurrentZoneId != "" {
+						_ = wsh.manager.LeaveZone(wsh.manager.AuthManager.AuthTokenValid[peerId], wsh.manager.WSPeers[peerId].CurrentZoneId, peerId)
+					}
 					if wsh.manager.WSPeers[peerId].CurrentSquadId != "" {
 						_ = wsh.manager.LeaveSquad(wsh.manager.WSPeers[peerId].CurrentSquadId, peerId, MESH)
 					}

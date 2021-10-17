@@ -121,7 +121,7 @@ func (pdm *SquadDBManager) UpdateSquadMembers(ctx context.Context, squadId strin
 
 func (pdm *SquadDBManager) UpdateSquadAuthorizedMembers(ctx context.Context, squadId string, authorizedMembers []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": squadId}, bson.D{
-		{"$set", bson.D{{"authorizedMembers", authorizedMembers}}},
+		{"$set", bson.D{{"authorizedmembers", authorizedMembers}}},
 	})
 	return
 }

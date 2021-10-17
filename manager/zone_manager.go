@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -98,6 +99,7 @@ func (zm *ZoneManager) ConnectToZone(token string, zoneId string, from string, p
 							zm.manager.WSPeers[member].mux.Unlock()
 							return
 						}
+						zm.manager.WSPeers[member].CurrentZoneId = zoneId
 						zm.manager.WSPeers[member].mux.Unlock()
 					}
 				}
@@ -136,7 +138,7 @@ func (zm *ZoneManager) GetZoneByID(zoneId string) (zones *Zone, err error) {
 	return
 }
 
-func (zm *ZoneManager) LeaveZone(token string,zoneId string, from string) (err error) {
+func (zm *ZoneManager) LeaveZone(token string, zoneId string, from string) (err error) {
 	if _, ok := zm.authManager.AuthTokenValid[token]; !ok {
 		err = fmt.Errorf("not a valid token provided")
 		return
@@ -161,7 +163,7 @@ func (zm *ZoneManager) LeaveZone(token string,zoneId string, from string) (err e
 	} else {
 		zone.ConnectedMembers = append(zone.ConnectedMembers[:memberIndex], zone.ConnectedMembers[memberIndex+1:]...)
 	}
-	if err = zm.DB.UpdateZoneMembers(context.Background(),zoneId,zone.ConnectedMembers); err != nil {
+	if err = zm.DB.UpdateZoneMembers(context.Background(), zoneId, zone.ConnectedMembers); err != nil {
 		return
 	}
 	signalLeaving := func(to []string) {
@@ -169,10 +171,10 @@ func (zm *ZoneManager) LeaveZone(token string,zoneId string, from string) (err e
 			if member != from {
 				if _, ok := zm.manager.GRPCPeers[member]; ok {
 					if wserr := zm.manager.GRPCPeers[member].Conn.Send(&Response{
-						Type:    ZONE_MEMBER_DISCONNECTED,
+						Type:    LEAVING_ZONE_MEMBER,
 						Success: true,
 						Payload: map[string]string{
-							"from":   from,
+							"userId": from,
 							"zoneId": zoneId,
 						},
 					}); wserr != nil {
@@ -193,11 +195,13 @@ func (zm *ZoneManager) LeaveZone(token string,zoneId string, from string) (err e
 						zm.manager.WSPeers[member].mux.Unlock()
 						continue
 					}
+					zm.manager.WSPeers[member].CurrentZoneId = ""
 					zm.manager.WSPeers[member].mux.Unlock()
 				}
 			}
 		}
 	}
+	go signalLeaving([]string{zone.HostId})
 	go signalLeaving(zone.ConnectedMembers)
 	go signalLeaving(zone.AuthorizedMembers)
 	return
@@ -239,7 +243,11 @@ func (zm *ZoneManager) CreateZone(token string, zoneId string, owner string, zon
 			Type:    NEW_ZONE,
 			Success: true,
 			Payload: map[string]string{
-				"ID": zoneId,
+				"zoneId":           zoneId,
+				"zoneName":         zoneName,
+				"zoneImageURL":     "",
+				"zoneOwner":        owner,
+				"zoneCreationDate": time.Now().Format("Mon Jan _2 15:04:05 MST 2006"),
 			},
 		})
 
@@ -306,6 +314,23 @@ func (zm *ZoneManager) UpdateZoneAuthorizedMembers(zoneId string, authorizedMemb
 		return
 	}
 	signalNewAuthorizedMember := func() {
+		zone, zoneErr := zm.GetZoneByID(zoneId)
+		if zoneErr != nil {
+			return
+		}
+		if _, ok := zm.manager.GRPCPeers[zone.HostId]; ok {
+			if err := zm.manager.GRPCPeers[zone.HostId].Conn.Send(&Response{
+				Type:    NEW_AUTHORIZED_ZONE_MEMBER,
+				Success: true,
+				Payload: map[string]string{
+					"zoneId": zoneId,
+					"userId": authorizedMember,
+				},
+			}); err != nil {
+				delete(zm.manager.GRPCPeers, authorizedMember)
+				return
+			}
+		}
 		if _, ok := zm.manager.GRPCPeers[authorizedMember]; ok {
 			if err := zm.manager.GRPCPeers[authorizedMember].Conn.Send(&Response{
 				Type:    NEW_AUTHORIZED_ZONE,
@@ -380,6 +405,19 @@ func (zm *ZoneManager) DeleteZoneAuthorizedMembers(zoneId string, authorizedMemb
 	}
 	_, _ = index, contain
 	signalRemovedAuthorizedMember := func() {
+		if _, ok := zm.manager.GRPCPeers[zone.HostId]; ok {
+			if err := zm.manager.GRPCPeers[zone.HostId].Conn.Send(&Response{
+				Type:    REMOVED_ZONE_AUTHORIZED_MEMBER,
+				Success: true,
+				Payload: map[string]string{
+					"zoneId": zoneId,
+					"userId": authorizedMember,
+				},
+			}); err != nil {
+				delete(zm.manager.GRPCPeers, authorizedMember)
+				return
+			}
+		}
 		if _, ok := zm.manager.GRPCPeers[authorizedMember]; ok {
 			if err := zm.manager.GRPCPeers[authorizedMember].Conn.Send(&Response{
 				Type:    REMOVED_AUTHORIZED_ZONE,

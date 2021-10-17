@@ -72,6 +72,7 @@ func (wsm *WSStateMiddleware) Process(req *ServRequest, manager *Manager, conn *
 			}
 			wsm.lock.Unlock()
 		} else if grpc, ok := manager.GRPCPeers[req.To]; ok {
+			fmt.Println("seding to grpc peer")
 			payload := make(map[string]string)
 			for i, v := range req.Payload {
 				payload[i] = v

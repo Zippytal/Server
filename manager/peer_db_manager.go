@@ -105,34 +105,34 @@ func (pdm *PeerDBManager) UpdatePeerFriends(ctx context.Context, peerId string, 
 
 func (pdm *PeerDBManager) UpdateKnownSquads(ctx context.Context, peerId string, knownSquads []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
-		{"$set", bson.D{{"knownSquadsId", knownSquads}}},
+		{"$set", bson.D{{"knownsquadsid", knownSquads}}},
 	})
 	return
 }
 
 func (pdm *PeerDBManager) UpdateKnownHostedSquads(ctx context.Context, peerId string, knownHostedSquads []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
-		{"$set", bson.D{{"knownhostedSquadsId", knownHostedSquads}}},
+		{"$set", bson.D{{"knownhostedsquadsid", knownHostedSquads}}},
 	})
 	return
 }
 func (pdm *PeerDBManager) UpdateKnownZones(ctx context.Context, peerId string, knownZonesId []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
-		{"$set", bson.D{{"knownZonesId", knownZonesId}}},
+		{"$set", bson.D{{"knownzonesid", knownZonesId}}},
 	})
 	return
 }
 
 func (pdm *PeerDBManager) UpdatePeerFriendRequests(ctx context.Context, peerId string, requests []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
-		{"$set", bson.D{{"friendRequests", requests}}},
+		{"$set", bson.D{{"friendrequests", requests}}},
 	})
 	return
 }
 
 func (pdm *PeerDBManager) UpdateIncomingCalls(ctx context.Context, peerId string, incomingCalls []string) (err error) {
 	_, err = pdm.UpdateOne(ctx, bson.M{"id": peerId}, bson.D{
-		{"$set", bson.D{{"incomingCalls", incomingCalls}}},
+		{"$set", bson.D{{"incomingcalls", incomingCalls}}},
 	})
 	return
 }

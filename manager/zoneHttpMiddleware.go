@@ -13,6 +13,7 @@ const (
 	REMOVED_AUTHORIZED_ZONE        = "removed_authorized_zone"
 	INCOMING_ZONE_MEMBER           = "incoming_zone_member"
 	ZONE_MEMBER_DISCONNECTED       = "zone_member_disconnected"
+	LEAVING_ZONE_MEMBER            = "leaving_zone_member"
 	NEW_ZONE                       = "new_zone"
 	JOIN_ZONE                      = "join_zone"
 	LIST_ZONES                     = "list_zones"
@@ -32,6 +33,8 @@ const (
 	UPDATE_ZONE_AUTHORIZED_MEMBERS = "update_zone_authorized_members"
 	DELETE_ZONE_AUTHORIZED_MEMBERS = "delete_zone_authorized_members"
 	UPDATE_ZONE_PASSWORD           = "update_zone_password"
+	NEW_AUTHORIZED_ZONE_MEMBER     = "new_authorized_zone_member"
+	REMOVED_ZONE_AUTHORIZED_MEMBER = "removed_zone_authorized_member"
 )
 
 type ZoneHTTPMiddleware struct {
@@ -159,7 +162,7 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err = zhm.manager.LeaveZone(r.Token,r.Payload["zoneId"], r.From); err != nil {
+		if err = zhm.manager.LeaveZone(r.Token, r.Payload["zoneId"], r.From); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -169,7 +172,7 @@ func (zhm *ZoneHTTPMiddleware) Process(ctx context.Context, r *ServRequest, req 
 		})
 	case SQUAD_AUTH:
 	case CREATE_ZONE:
-		if err = VerifyFields(r.Payload, "zoneId", "password", "zoneName","zoneHost"); err != nil {
+		if err = VerifyFields(r.Payload, "zoneId", "password", "zoneName", "zoneHost"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

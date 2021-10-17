@@ -31,6 +31,7 @@ type (
 		CurrentSquadId       string
 		CurrentHostedSquadId string
 		CurrentCallId        string
+		CurrentZoneId        string
 		mux                  *sync.Mutex
 	}
 
